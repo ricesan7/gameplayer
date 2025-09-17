@@ -20,7 +20,7 @@
     input[type="file"]::-webkit-file-upload-button{ appearance:none; border:none; background:#273244; color:#e7e9ea; padding:10px 12px; border-radius:10px; font-weight:600; }
     .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
     .kv { display:grid; grid-template-columns: 120px 1fr; gap: 6px 8px; font-size:12px; color:#9aa4af; }
-    .log { height: 140px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px; font-family: ui-monospace, SFMono, Menlo, Consolas, "Courier New"; font-size:12px; }
+    .log { height: 160px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px; font-family: ui-monospace, SFMono, Menlo, Consolas, "Courier New"; font-size:12px; }
     iframe { width: 100%; height: 520px; background:#000; border:1px solid #1f2937; border-radius:12px; }
     .badge { background:#0b1220; border:1px solid #334155; padding:2px 6px; border-radius:999px; font-size:11px; color:#93c5fd; }
     code { background:#0b1220; border:1px solid #1f2937; padding: 2px 6px; border-radius:8px; }
@@ -85,7 +85,7 @@
 <body>
   <header>
     <h1>Browser Game Player (Mobile-First) <span class="badge">sandboxed</span></h1>
-    <div class="sub">スマホ前提：ファイル参照でJSスクリプトを選び、安全なiframeで実行。SFC風配置の疑似コントローラー。未使用ボタンはゲーム側の宣言で自動非表示。</div>
+    <div class="sub">ファイル参照でJSを安全実行。SFC風コントローラー／未使用ボタンは自動非表示。</div>
   </header>
 
   <main>
@@ -180,8 +180,7 @@
     }
   }
 
-  /* 子iframeブートHTML
-     ※ 重要: </script> は <\/script> にエスケープしてあります（親<script>が閉じないように） */
+  /* 子iframeブートHTML（</script>は<\/script>にエスケープ） */
   const bootSrc =
 `<!doctype html><html><head><meta charset="utf-8"><style>
   html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}
@@ -215,6 +214,9 @@
   }
   requestAnimationFrame(loop);
 
+  // 親へ「準備OK」を通知
+  parent.postMessage({type:'ready'}, '*');
+
   addEventListener('message', async (ev)=>{
     const d=ev.data||{};
     if(d.type==='runCode'){
@@ -222,47 +224,65 @@
         const code = (d.code||'') + "\\n//# sourceURL=user-game.js";
         const url = URL.createObjectURL(new Blob([code], {type:'application/javascript'}));
         const mod = await import(url);
-        game = mod.default || window.game || mod.game;
-        if(!game) throw new Error('game object not found: export default game');
+        const g = mod.default || window.game || mod.game;
+        if(!g) throw new Error('game object not found: export default game');
+        game = g;
         if(game.init) await game.init(api);
         parent.postMessage({type:'log',level:'info',msg:'game loaded (code)'} , '*');
-      }catch(e){ parent.postMessage({type:'log',level:'error',msg:'runCode failed: '+String(e.stack||e)},'*'); }
+      }catch(e){ parent.postMessage({type:'log',level:'error',msg:'runCode failed: '+String(e.message||e)},'*'); }
     } else if(d.type==='vkey'){ setVKey(d.key, !!d.down); }
   });
 })();
 <\/script>
 </body></html>`;
 
+  // ログ&状態
   function log(msg, level='info'){ const line = `[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; }
   function setState(s){ stateEl.textContent = s; }
 
+  // 子iframe リセット＆ready待ち
+  let boxReady = false;
   function resetIframe(){
     const blob = new Blob([bootSrc], {type:'text/html'});
     const url = URL.createObjectURL(blob);
     iframe.src = url;
+    boxReady = false;
     setState('booting');
     log('sandbox iframe booting...');
     showAllButtons();
   }
 
+  // 親←子のメッセージ
   addEventListener('message', (ev)=>{
     const d = ev.data || {};
+    if(d.type==='ready'){ boxReady = true; log('sandbox ready'); return; }
     if(d.type==='log') log(d.msg, d.level);
     if(d.type==='setButtons'){ applyButtonVisibility(Array.isArray(d.buttons)? d.buttons: []); log('buttons set: '+JSON.stringify(d.buttons||[])); }
   });
 
+  // 子へ runCode（ready待ちで確実に起動）
+  async function runCodeWhenReady(code){
+    if(!boxReady){
+      for(let i=0;i<40 && !boxReady;i++){ await new Promise(r=>setTimeout(r, 50)); }
+    }
+    if(!boxReady){ log('子iframeがreadyになりませんでした','error'); return; }
+    iframe.contentWindow.postMessage({type:'runCode', code}, '*');
+    setState('running');
+  }
+
+  // ファイル実行
   async function runScriptFile(f){
     if(!f || !f.name.endsWith('.js')){ log('拡張子 .js のファイルを選択してください','warn'); return; }
     resetIframe();
-    await new Promise(r=>setTimeout(r, 50));
+    await new Promise(r=>setTimeout(r, 30));
     const text = await f.text();
-    const needsExport = !/export\\s+default\\s+/m.test(text);
+    const needsExport = !/export\s+default\s+/m.test(text);
     const wrapped = needsExport ? `${text}\nexport default game;` : text;
-    iframe.contentWindow.postMessage({type:'runCode', code: wrapped}, '*');
-    setState('running');
+    await runCodeWhenReady(wrapped);
     log(`実行開始: ${f.name}`);
   }
 
+  // ファイル選択
   file.addEventListener('change',()=>{
     const f = file.files && file.files[0];
     if(!f){ if(filenameEl) filenameEl.textContent = '未選択'; return; }
@@ -270,6 +290,7 @@
     runScriptFile(f);
   });
 
+  // 疑似コントローラー
   function bindVKey(id, key){
     const el = document.getElementById(id);
     if(!el) return;
@@ -317,13 +338,11 @@ export const game = {
 export default game;
 `;
 
-  runSampleBtn.addEventListener('click', ()=>{
+  // サンプル実行（readyハンドシェイク後に送信）
+  runSampleBtn.addEventListener('click', async ()=>{
     resetIframe();
-    setTimeout(()=>{
-      iframe.contentWindow.postMessage({type:'runCode', code: sample}, '*');
-      stateEl.textContent = 'running';
-      log('実行開始: sample-game.js');
-    }, 50);
+    await runCodeWhenReady(sample);
+    log('実行開始: sample-game.js');
   });
 
   restartBtn.addEventListener('click', ()=>{ resetIframe(); setState('idle'); log('restart'); });
