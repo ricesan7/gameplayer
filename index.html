@@ -1,5 +1,4 @@
 <!doctype html>
-
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
@@ -26,19 +25,23 @@
     code { background:#0b1220; border:1px solid #1f2937; padding: 2px 6px; border-radius:8px; }
     .small { font-size: 12px; color: #9aa4af; }
     .hidden { display: none !important; }
+
     /* Virtual Controller */
     .controller { display:grid; grid-template-columns: 1fr 220px; gap: 12px; align-items: center; margin-top: 12px; }
     @media (max-width: 900px){ .controller { grid-template-columns: 1fr; } }
+
+    /* D-Pad: horizontal */
     .pad { display:flex; gap:6px; width:max-content; user-select:none; touch-action:none; flex-wrap:nowrap; }
     .btn { width:56px; height:56px; border-radius:12px; border:1px solid #334155; background:#141a1f; display:flex; align-items:center; justify-content:center; font-weight:700; cursor:pointer; }
     .btn:active, .btn.on { background:#1f2937; }
-    .ab { display:flex; gap:10px; align-items:center; justify-content:flex-start; }
-    .btn.round { border-radius:999px; width:64px; height:64px; }
     .legend { font-size:12px; color:#9aa4af; }
+
     /* SFC-like */
     .diamond { display:grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px; gap:10px; width:max-content; }
+    .ab { display:flex; gap:10px; align-items:center; justify-content:flex-start; }
     .shoulders { display:flex; gap:10px; margin-top:8px; flex-wrap:wrap; }
     .startsel { display:flex; gap:10px; margin-top:8px; align-items:center; }
+    .btn.round { border-radius:999px; width:64px; height:64px; }
     .btn.small { width:72px; height:40px; border-radius:20px; font-size:14px; }
   </style>
 </head>
@@ -67,52 +70,47 @@
       <p class="small">※ セキュリティ: ユーザースクリプトは <code>&lt;iframe sandbox="allow-scripts"&gt;</code> で同一オリジンを切り離し実行。親DOM・ネットワークは不可、通信は <code>postMessage</code> のみ。</p>
       <h2 style="margin-top:14px;">ログ</h2>
       <pre id="log" class="log"></pre>
-    </section><section class="panel">
-  <h2>2) 実行ビュー</h2>
-  <iframe id="box" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
-  <div class="controller" aria-label="On-screen controller">
-    <div>
-      <div class="legend">D-Pad</div>
-      <div class="pad" aria-label="D-Pad horizontal">
-        <button id="kLeft" class="btn" aria-label="Left">◀</button>
-        <button id="kUp" class="btn" aria-label="Up">▲</button>
-        <button id="kDown" class="btn" aria-label="Down">▼</button>
-        <button id="kRight" class="btn" aria-label="Right">▶</button>
-      </div>
-        <button id="kUp" class="btn" aria-label="Up">▲</button>
-        <div></div>
-        <button id="kLeft" class="btn" aria-label="Left">◀</button>
-        <div></div>
-        <button id="kRight" class="btn" aria-label="Right">▶</button>
-        <div></div>
-        <button id="kDown" class="btn" aria-label="Down">▼</button>
-        <div></div>
-      </div>
-    </div>
-    <div>
-      <div class="legend">Buttons (ABXY + L/R + Start/Select)</div>
-      <div class="shoulders">
-        <button id="kL" class="btn small" aria-label="L">L</button>
-        <button id="kR" class="btn small" aria-label="R">R</button>
-      </div>
-      <div class="diamond" aria-label="ABXY diamond">
-        <div></div>
-        <button id="kX" class="btn round" aria-label="X">X</button>
-        <div></div>
-        <button id="kY" class="btn round" aria-label="Y">Y</button>
-        <button id="kA" class="btn round" aria-label="A">A</button>
-        <button id="kB" class="btn round" aria-label="B">B</button>
-        <div></div>
-      </div>
-      <div class="startsel">
-        <button id="kSelect" class="btn small" aria-label="Select">Select</button>
-        <button id="kStart" class="btn small" aria-label="Start">Start</button>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-  </main><script>
+    <section class="panel">
+      <h2>2) 実行ビュー</h2>
+      <iframe id="box" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+
+      <div class="controller" aria-label="On-screen controller">
+        <div>
+          <div class="legend">D-Pad</div>
+          <div class="pad" aria-label="D-Pad horizontal">
+            <button id="kLeft" class="btn" aria-label="Left">◀</button>
+            <button id="kUp" class="btn" aria-label="Up">▲</button>
+            <button id="kDown" class="btn" aria-label="Down">▼</button>
+            <button id="kRight" class="btn" aria-label="Right">▶</button>
+          </div>
+        </div>
+        <div>
+          <div class="legend">Buttons (ABXY + L/R + Start/Select)</div>
+          <div class="shoulders">
+            <button id="kL" class="btn small" aria-label="L">L</button>
+            <button id="kR" class="btn small" aria-label="R">R</button>
+          </div>
+          <div class="diamond" aria-label="ABXY diamond">
+            <div></div>
+            <button id="kX" class="btn round" aria-label="X">X</button>
+            <div></div>
+            <button id="kY" class="btn round" aria-label="Y">Y</button>
+            <button id="kA" class="btn round" aria-label="A">A</button>
+            <button id="kB" class="btn round" aria-label="B">B</button>
+            <div></div>
+          </div>
+          <div class="startsel">
+            <button id="kSelect" class="btn small" aria-label="Select">Select</button>
+            <button id="kStart" class="btn small" aria-label="Start">Start</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
 (function(){
   const $ = (s)=>document.querySelector(s);
   const logEl = $('#log');
@@ -145,37 +143,159 @@
     }
   }
 
-  const bootSrc = `<!doctype html><html><head><meta charset=\"utf-8\"><style>html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{display:block;margin:0 auto;background:#000}</style></head><body><canvas id=\"c\" width=\"640\" height=\"360\"></canvas><script>(function(){ const ctx = document.getElementById('c').getContext('2d'); const api = { canvas: document.getElementById('c'), ctx, loadImage: (url)=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;}), playBeep: ()=>{try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.type='square';o.frequency.value=440;const g=a.createGain();g.gain.value=0.05;o.connect(g).connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close();},120);}catch(e){}} , setButtons: (list)=>{ parent.postMessage({type:'setButtons', buttons: Array.isArray(list)? list: []}, '*'); } }; const input={ keys:new Set(), mouse:{x:0,y:0,down:false} }; onkeydown=e=>input.keys.add(e.key); onkeyup=e=>input.keys.delete(e.key); onmousemove=e=>{const r=api.canvas.getBoundingClientRect(); input.mouse.x=e.clientX-r.left; input.mouse.y=e.clientY-r.top;}; onmousedown=()=>input.mouse.down=true; onmouseup=()=>input.mouse.down=false;
+  const bootSrc = `<!doctype html><html><head><meta charset=\"utf-8\"><style>html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{display:block;margin:0 auto;background:#000}</style></head><body><canvas id=\"c\" width=\"640\" height=\"360\"></canvas><script>
+(function(){
+  const ctx = document.getElementById('c').getContext('2d');
+  const api = {
+    canvas: document.getElementById('c'),
+    ctx,
+    loadImage: (url)=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;}),
+    playBeep: ()=>{try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.type='square';o.frequency.value=440;const g=a.createGain();g.gain.value=0.05;o.connect(g).connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close();},120);}catch(e){}},
+    setButtons: (list)=>{ parent.postMessage({type:'setButtons', buttons: Array.isArray(list)? list: []}, '*'); }
+  };
+  const input={ keys:new Set(), mouse:{x:0,y:0,down:false} };
+  onkeydown=e=>input.keys.add(e.key);
+  onkeyup=e=>input.keys.delete(e.key);
+  onmousemove=e=>{const r=api.canvas.getBoundingClientRect(); input.mouse.x=e.clientX-r.left; input.mouse.y=e.clientY-r.top;};
+  onmousedown=()=>input.mouse.down=true; onmouseup=()=>input.mouse.down=false;
 
-function setVKey(key, pressed){ if(pressed) input.keys.add(key); else input.keys.delete(key);}
+  function setVKey(key, pressed){ if(pressed) input.keys.add(key); else input.keys.delete(key);}
 
-let game = null; let last=performance.now(); function loop(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; try{ if(game&&game.update) game.update(dt,input); if(game&&game.render) { ctx.imageSmoothingEnabled=false; game.render(ctx);} }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); } requestAnimationFrame(loop); } requestAnimationFrame(loop);
+  let game = null;
+  let last=performance.now();
+  function loop(t){
+    const dt=Math.min(0.05,(t-last)/1000); last=t;
+    try{ if(game&&game.update) game.update(dt,input); if(game&&game.render) { ctx.imageSmoothingEnabled=false; game.render(ctx);} }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
 
-addEventListener('message', async (ev)=>{ const d=ev.data||{}; if(d.type==='run'){ try{ const mod = await import(d.url); game = mod.default || window.game || mod.game; if(!game) throw new Error('game object not found: export default game'); if(game.init) await game.init(api); parent.postMessage({type:'log',level:'info',msg:'game loaded'} , ''); }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},''); } } else if(d.type==='runCode'){ try{ const url = URL.createObjectURL(new Blob([d.code||''], {type:'text/javascript'})); const mod = await import(url); game = mod.default || window.game || mod.game; if(!game) throw new Error('game object not found: export default game'); if(game.init) await game.init(api); parent.postMessage({type:'log',level:'info',msg:'game loaded (code)'} , ''); }catch(e){ parent.postMessage({type:'log',level:'error',msg:'runCode failed: '+String(e.stack||e)},''); } } else if(d.type==='vkey'){ setVKey(d.key, !!d.down); } }); })(); </script></body></html>`;
+  addEventListener('message', async (ev)=>{
+    const d=ev.data||{};
+    if(d.type==='run'){
+      try{
+        const mod = await import(d.url);
+        game = mod.default || window.game || mod.game;
+        if(!game) throw new Error('game object not found: export default game');
+        if(game.init) await game.init(api);
+        parent.postMessage({type:'log',level:'info',msg:'game loaded'} , '*');
+      }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }
+    } else if(d.type==='runCode'){
+      try{
+        const url = URL.createObjectURL(new Blob([d.code||''], {type:'text/javascript'}));
+        const mod = await import(url);
+        game = mod.default || window.game || mod.game;
+        if(!game) throw new Error('game object not found: export default game');
+        if(game.init) await game.init(api);
+        parent.postMessage({type:'log',level:'info',msg:'game loaded (code)'} , '*');
+      }catch(e){ parent.postMessage({type:'log',level:'error',msg:'runCode failed: '+String(e.stack||e)},'*'); }
+    } else if(d.type==='vkey'){ setVKey(d.key, !!d.down); }
+  });
+})();
+<\/script></body></html>`;
 
-function log(msg, level='info'){ const line = [${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; } function setState(s){ stateEl.textContent = s; }
+  function log(msg, level='info'){ const line = `[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; }
+  function setState(s){ stateEl.textContent = s; }
 
-function resetIframe(){ const blob = new Blob([bootSrc], {type:'text/html'}); const url = URL.createObjectURL(blob); iframe.src = url; setState('booting'); log('sandbox iframe booting...'); // Default: show all buttons until game narrows them showAllButtons(); }
+  function resetIframe(){
+    const blob = new Blob([bootSrc], {type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    iframe.src = url;
+    setState('booting');
+    log('sandbox iframe booting...');
+    // Default: show all buttons until game narrows them
+    showAllButtons();
+  }
 
-// Receive logs & setup from sandbox addEventListener('message', (ev)=>{ const d = ev.data || {}; if(d.type==='log') log(d.msg, d.level); if(d.type==='setButtons'){ applyButtonVisibility(Array.isArray(d.buttons)? d.buttons: []); log('buttons set: '+JSON.stringify(d.buttons||[])); } });
+  // Receive logs & setup from sandbox
+  addEventListener('message', (ev)=>{
+    const d = ev.data || {};
+    if(d.type==='log') log(d.msg, d.level);
+    if(d.type==='setButtons'){
+      applyButtonVisibility(Array.isArray(d.buttons)? d.buttons: []);
+      log('buttons set: '+JSON.stringify(d.buttons||[]));
+    }
+  });
 
-async function runScriptFile(f){ if(!f || !f.name.endsWith('.js')){ log('拡張子 .js のファイルを選択してください','warn'); return; } resetIframe(); await new Promise(r=>setTimeout(r, 50)); const text = await f.text(); const wrapped = // ESM Module Wrapper ${text} export { game as default };; iframe.contentWindow.postMessage({type:'runCode', code: wrapped}, '*'); setState('running'); log(実行開始: ${f.name}); }
+  async function runScriptFile(f){
+    if(!f || !f.name.endsWith('.js')){ log('拡張子 .js のファイルを選択してください','warn'); return; }
+    resetIframe();
+    await new Promise(r=>setTimeout(r, 50));
+    const text = await f.text();
+    const wrapped = `// ESM Module Wrapper\n${text}\nexport { game as default };`;
+    // 重要: 子iframe側でimportさせる
+    iframe.contentWindow.postMessage({type:'runCode', code: wrapped}, '*');
+    setState('running');
+    log(`実行開始: ${f.name}`);
+  }
 
-// File picker (mobile-first) file.addEventListener('change',()=>{ const f = file.files && file.files[0]; if(!f){ if(filenameEl) filenameEl.textContent = '未選択'; return; } if(filenameEl) filenameEl.textContent = f.name; runScriptFile(f); });
+  // File picker (mobile-first)
+  file.addEventListener('change',()=>{
+    const f = file.files && file.files[0];
+    if(!f){ if(filenameEl) filenameEl.textContent = '未選択'; return; }
+    if(filenameEl) filenameEl.textContent = f.name;
+    runScriptFile(f);
+  });
 
-// Virtual Controller handlers function bindVKey(id, key){ const el = document.getElementById(id); if(!el) return; const send = (down)=>{ if(!iframe.contentWindow) return; iframe.contentWindow.postMessage({type:'vkey', key, down}, '*'); el.classList.toggle('on', !!down); }; const downEv = (e)=>{ e.preventDefault(); send(true); }; const upEv = (e)=>{ e.preventDefault(); send(false); }; ['pointerdown','touchstart','mousedown'].forEach(ev=>el.addEventListener(ev, downEv, {passive:false})); ['pointerup','pointercancel','touchend','touchcancel','mouseup','mouseleave'].forEach(ev=>el.addEventListener(ev, upEv, {passive:false})); } for(const [name,id] of Object.entries(BUTTON_MAP)) bindVKey(id, KEY_MAP[name]);
+  // Virtual Controller handlers
+  function bindVKey(id, key){
+    const el = document.getElementById(id);
+    if(!el) return;
+    const send = (down)=>{ if(!iframe.contentWindow) return; iframe.contentWindow.postMessage({type:'vkey', key, down}, '*'); el.classList.toggle('on', !!down); };
+    const downEv = (e)=>{ e.preventDefault(); send(true); };
+    const upEv = (e)=>{ e.preventDefault(); send(false); };
+    ['pointerdown','touchstart','mousedown'].forEach(ev=>el.addEventListener(ev, downEv, {passive:false}));
+    ['pointerup','pointercancel','touchend','touchcancel','mouseup','mouseleave'].forEach(ev=>el.addEventListener(ev, upEv, {passive:false}));
+  }
+  for(const [name,id] of Object.entries(BUTTON_MAP)) bindVKey(id, KEY_MAP[name]);
 
-// Sample game (embedded) — demonstrates auto-hide const sample = \n// --- Sample Game (auto-hide buttons demo) ---\n// Only uses left/right + A + Start\nconst game = {\n  x: 0, y: 160, vx: 60, sprite: null, t: 0,\n  async init(api){\n    api.setButtons(['left','right','a','start']);\n    this.sprite = await api.loadImage('data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'16\\' height=\\'16\\'><rect width=\\'16\\' height=\\'16\\' fill=\\'#111'/><circle cx=\\'8\\' cy=\\'8\\' r=\\'6\\' fill=\\'#4ade80'/></svg>'))\n    api.playBeep();\n  },\n  update(dt,input){\n    if(input.keys.has('ArrowLeft')) this.x -= 100*dt;\n    if(input.keys.has('ArrowRight')) this.x += 100*dt;\n    if(input.keys.has('z')) this.x += Math.sin(this.t*6)*30*dt; // A: jitter dash\n    if(input.keys.has('Enter')) {/* Start pressed */}\n    this.t += dt;\n  },\n  render(ctx){\n    const W=ctx.canvas.width, H=ctx.canvas.height;\n    ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);\n    ctx.strokeStyle = '#1f2937'; for(let i=0;i<W;i+=16){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}\n    for(let j=0;j<H;j+=16){ctx.beginPath();ctx.moveTo(0,j);ctx.lineTo(W,j);ctx.stroke();}\n    if(this.sprite) ctx.drawImage(this.sprite, Math.round(this.x), Math.round(this.y));\n    ctx.fillStyle = '#9aa4af'; ctx.font = '12px ui-monospace';\n    ctx.fillText('Uses: Left/Right + A(z) + Start(Enter) — others auto-hidden', 8, 16);\n  }\n};\n;
+  // Sample game (auto-hide demo)
+  const sample = `
+// --- Sample Game (auto-hide buttons demo) ---
+// Only uses left/right + A + Start
+const game = {
+  x: 0, y: 160, vx: 60, sprite: null, t: 0,
+  async init(api){
+    api.setButtons(['left','right','a','start']);
+    this.sprite = await api.loadImage('data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'16\\' height=\\'16\\'><rect width=\\'16\\' height=\\'16\\' fill=\\'#111'/><circle cx=\\'8\\' cy=\\'8\\' r=\\'6\\' fill=\\'#4ade80'/></svg>'))
+    api.playBeep();
+  },
+  update(dt,input){
+    if(input.keys.has('ArrowLeft')) this.x -= 100*dt;
+    if(input.keys.has('ArrowRight')) this.x += 100*dt;
+    if(input.keys.has('z')) this.x += Math.sin(this.t*6)*30*dt; // A: jitter dash
+    if(input.keys.has('Enter')) {/* Start pressed */}
+    this.t += dt;
+  },
+  render(ctx){
+    const W=ctx.canvas.width, H=ctx.canvas.height;
+    ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle = '#1f2937'; for(let i=0;i<W;i+=16){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}
+    for(let j=0;j<H;j+=16){ctx.beginPath();ctx.moveTo(0,j);ctx.lineTo(W,j);ctx.stroke();}
+    if(this.sprite) ctx.drawImage(this.sprite, Math.round(this.x), Math.round(this.y));
+    ctx.fillStyle = '#9aa4af'; ctx.font = '12px ui-monospace';
+    ctx.fillText('Uses: Left/Right + A(z) + Start(Enter) — others auto-hidden', 8, 16);
+  }
+};
+`;
 
-runSampleBtn.addEventListener('click', ()=>{ const blob = new Blob([sample], {type:'text/javascript'}); const fileLike = new File([blob], 'sample-game.js', {type:'text/javascript'}); runScriptFile(fileLike); });
+  runSampleBtn.addEventListener('click', ()=>{
+    const blob = new Blob([sample], {type:'text/javascript'});
+    const fileLike = new File([blob], 'sample-game.js', {type:'text/javascript'});
+    runScriptFile(fileLike);
+  });
 
-restartBtn.addEventListener('click', ()=>{ resetIframe(); setState('idle'); log('restart'); });
+  restartBtn.addEventListener('click', ()=>{ resetIframe(); setState('idle'); log('restart'); });
 
-// boot once resetIframe(); })(); </script>
+  // boot once
+  resetIframe();
+})();
+</script>
 
 <!--
 公開手順: このファイルを index.html として GitHub Pages (Deploy from a branch: main / root) で公開。
 ゲーム側: init(api) 内で api.setButtons(['left','right','a','start']) のように使用ボタンを宣言してください。
 指定しなければデフォルトで全ボタン表示。
---></body>
+-->
+</body>
 </html>
