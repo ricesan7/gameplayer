@@ -1,0 +1,23 @@
+{
+  "name": "browser-game-platform",
+  "private": true,
+  "packageManager": "pnpm@9",
+  "workspaces": ["apps/*", "packages/*", "games/*"],
+  "scripts": {
+    "dev": "pnpm -C apps/player dev",
+    "build": "pnpm -C apps/player build && pnpm -C apps/sandbox build",
+    "lint": "eslint .",
+    "test": "vitest run --dir apps --reporter=default",
+    "e2e": "playwright test",
+    "preview": "pnpm -C apps/player preview --port 4173"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0",
+    "@playwright/test": "^1.47.0"
+  }
+}
