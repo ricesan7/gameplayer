@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Game Player (Vite + TS)</title>
+    <style>
+      :root { --gap: 12px; --btn:56px; --round:64px; }
+      body { margin:0; background:#0b0f12; color:#e7e9ea;
+             font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans"; }
+      header { padding:16px; border-bottom:1px solid #1f2937; background:#11161a; position:sticky; top:0; z-index:10; }
+      h1 { margin:0 0 4px; font-size:18px; }
+      .sub { color:#9aa4af; font-size:12px; }
+      main { padding:16px; display:grid; gap:12px; grid-template-columns:360px 1fr; }
+      @media (max-width:900px){ main{ grid-template-columns:1fr; } }
+      .panel { background:#0f1418; border:1px solid #1f2937; border-radius:12px; padding:12px; }
+      .panel h2 { font-size:14px; margin:0 0 8px; color:#c7d0d9; }
+      button, input[type="file"], input[type="url"]{
+        appearance:none; background:#1f2937; color:#e7e9ea; border:1px solid #334155;
+        padding:10px 12px; border-radius:12px; font-size:16px; font-weight:600; cursor:pointer;
+      }
+      button:hover { background:#273244; }
+      input[type="file"]::-webkit-file-upload-button{
+        appearance:none; border:none; background:#273244; color:#e7e9ea; padding:10px 12px; border-radius:10px; font-weight:600;
+      }
+      .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+      .kv { display:grid; grid-template-columns: 120px 1fr; gap: 6px 8px; font-size:12px; color:#9aa4af; }
+      .log { height: 180px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px;
+             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New"; font-size:12px; white-space:pre-wrap; }
+      iframe { width: 100%; height: 520px; background:#000; border:1px solid #1f2937; border-radius:12px; }
+      .badge { background:#0b1220; border:1px solid #334155; padding:2px 6px; border-radius:999px; font-size:11px; color:#93c5fd; }
+      .small { font-size:12px; color:#9aa4af; }
+      .controller{ display:grid; grid-template-columns:1fr 1fr; grid-template-areas:"left right" "start start";
+                   gap:12px; align-items:end; margin-top:12px; position:relative; }
+      .left{ grid-area:left; position:relative; min-height:calc(var(--btn)*3 + 40px); }
+      .right{ grid-area:right; position:relative; min-height:calc(var(--btn)*2 + 40px); display:flex; justify-content:flex-end; }
+      .startwrap{ grid-area:start; display:flex; justify-content:center; }
+      .shoulder{ position:absolute; top:0; width:72px; height:40px; border-radius:20px; font-size:14px; display:flex;
+                 align-items:center; justify-content:center; background:#1f2937; border:1px solid #334155; }
+      #kL{ left:0; } #kR{ right:0; }
+      .dpad{ position:absolute; bottom:0; left:0; display:grid;
+             grid-template-columns:var(--btn) var(--btn) var(--btn);
+             grid-template-rows:var(--btn) var(--btn) var(--btn); gap:6px; touch-action:none; user-select:none; }
+      .abonly{ position:absolute; bottom:0; right:0; display:flex; gap:12px; touch-action:none; user-select:none; }
+      .btn{ width:var(--btn); height:var(--btn); border-radius:12px; border:1px solid #334155; background:#141a1f;
+            display:flex; align-items:center; justify-content:center; font-weight:700; cursor:pointer; }
+      .btn.small{ width:72px; height:40px; border-radius:20px; font-size:14px; }
+      .btn.round{ width:64px; height:64px; border-radius:999px; }
+      .btn:active, .btn.on{ background:#1f2937; }
+      .legend{ font-size:12px; color:#9aa4af; margin-bottom:6px; }
+      .startsel{ display:flex; gap:12px; margin-top:8px; align-items:center; }
+      .center{ display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Browser Game Player <span class="badge">sandboxed</span></h1>
+      <div class="sub">端末/URL/サンプルのJSを安全に実行。D-Pad 4方向＋A/B（X/Yなし）。</div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>1) スクリプトを読み込む</h2>
+        <div class="row">
+          <input id="file" type="file" accept=".js" />
+          <span id="filename" class="small">未選択</span>
+          <button id="runLocal" type="button">選んだファイルを実行</button>
+        </div>
+        <div class="row">
+          <input id="url" type="url" placeholder="https://raw.githubusercontent.com/user/repo/branch/path/game.js" style="min-width:340px;" />
+          <button id="runURL" type="button">URLから実行</button>
+          <span class="small">※ CORS 必須。GitHubは raw.githubusercontent.com を推奨</span>
+        </div>
+        <div class="row">
+          <button id="runSample" type="button">サンプル（sample-game.js）を実行</button>
+          <button id="restart"   type="button">再起動</button>
+          <span class="small">状態: <span id="state">idle</span></span>
+        </div>
+        <div class="kv" style="margin-top:12px;">
+          <div>想定エントリ:</div><div><code>export default game</code> または <code>window.game = {...}</code></div>
+          <div>必須:</div><div><code>init(api)</code>, <code>update(dt,input)</code>, <code>render(ctx)</code></div>
+          <div>API:</div><div><code>api.canvas / api.ctx / api.loadImage(url) / api.playBeep()</code></div>
+        </div>
+        <h2 style="margin-top:14px;">ログ</h2>
+        <pre id="log" class="log"></pre>
+      </section>
+
+      <section class="panel">
+        <h2>2) 実行ビュー</h2>
+        <iframe id="box" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+
+        <!-- コントローラ（D-Pad 4方向 + A/B + L/R + Start/Select） -->
+        <div class="controller" aria-label="on-screen controller">
+          <div class="left">
+            <button id="kL" class="btn small shoulder" aria-label="L">L</button>
+            <div class="legend">D-Pad</div>
+            <div class="dpad" aria-label="D-Pad 4-way">
+              <div></div> <button id="kUp" class="btn" aria-label="Up">▲</button> <div></div>
+              <button id="kLeft" class="btn" aria-label="Left">◀</button> <div></div> <button id="kRight" class="btn" aria-label="Right">▶</button>
+              <div></div> <button id="kDown" class="btn" aria-label="Down">▼</button> <div></div>
+            </div>
+          </div>
+          <div class="right">
+            <button id="kR" class="btn small shoulder" aria-label="R">R</button>
+            <div class="legend" style="width:100%; text-align:right;">A / B</div>
+            <div class="abonly" aria-label="A/B buttons">
+              <button id="kA" class="btn round" aria-label="A">A</button>
+              <button id="kB" class="btn round" aria-label="B">B</button>
+            </div>
+          </div>
+          <div class="startwrap center">
+            <div class="startsel">
+              <button id="kSelect" class="btn small" type="button">Select</button>
+              <button id="kStart"  class="btn small" type="button">Start</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
