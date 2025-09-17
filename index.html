@@ -20,7 +20,7 @@
     input[type="file"]::-webkit-file-upload-button{ appearance:none; border:none; background:#273244; color:#e7e9ea; padding:10px 12px; border-radius:10px; font-weight:600; }
     .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
     .kv { display:grid; grid-template-columns: 120px 1fr; gap: 6px 8px; font-size:12px; color:#9aa4af; }
-    .log { height: 160px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px; font-family: ui-monospace, SFMono, Menlo, Consolas, "Courier New"; font-size:12px; }
+    .log { height: 160px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px; font-family: ui-monospace, SFMono, Menlo, Consolas, "Courier New"; font-size:12px; white-space:pre-wrap; }
     iframe { width: 100%; height: 520px; background:#000; border:1px solid #1f2937; border-radius:12px; }
     .badge { background:#0b1220; border:1px solid #334155; padding:2px 6px; border-radius:999px; font-size:11px; color:#93c5fd; }
     code { background:#0b1220; border:1px solid #1f2937; padding: 2px 6px; border-radius:8px; }
@@ -96,7 +96,8 @@
         <span id="filename" class="small">未選択</span>
       </div>
       <div class="row" style="margin-top:8px;">
-        <button id="runSample">サンプルを実行</button>
+        <!-- onclick(グローバル) + addEventListener(通常) の二重化 -->
+        <button id="runSample" onclick="window.runSample && window.runSample()">サンプルを実行</button>
         <button id="restart">再起動</button>
         <span class="small">実行状態: <span id="state">idle</span></span>
       </div>
@@ -105,7 +106,7 @@
         <div>必須メソッド:</div><div><code>init(api)</code>, <code>update(dt, input)</code>, <code>render(ctx)</code></div>
         <div>提供API:</div><div><code>api.canvas, api.ctx, api.loadImage(url), api.playBeep(), api.setButtons(list)</code></div>
       </div>
-      <p class="small">※ 子iframeは <code>allow-scripts</code> のみ（別オリジン相当）。通信は <code>postMessage</code> 経由。</p>
+      <p class="small">※ 子iframeは <code>allow-scripts</code> のみ（別オリジン相当）。通信は <code>postMessage</code>。</p>
       <h2 style="margin-top:14px;">ログ</h2>
       <pre id="log" class="log"></pre>
     </section>
@@ -169,6 +170,9 @@
     a: 'z', b: 'x', x: 's', y: 'a', l: 'q', r: 'w', start: 'Enter', select: 'Shift'
   };
 
+  function log(msg, level='info'){ const line = `[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; }
+  function setState(s){ stateEl.textContent = s; }
+
   function allButtons(){ return Object.values(BUTTON_MAP).map(id=>document.getElementById(id)).filter(Boolean); }
   function showAllButtons(){ allButtons().forEach(el=>el.classList.remove('hidden')); }
   function applyButtonVisibility(list){
@@ -214,7 +218,6 @@
   }
   requestAnimationFrame(loop);
 
-  // 親へ「準備OK」を通知
   parent.postMessage({type:'ready'}, '*');
 
   addEventListener('message', async (ev)=>{
@@ -236,12 +239,9 @@
 <\/script>
 </body></html>`;
 
-  // ログ&状態
-  function log(msg, level='info'){ const line = `[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; }
-  function setState(s){ stateEl.textContent = s; }
-
-  // 子iframe リセット＆ready待ち
+  // readyフラグ
   let boxReady = false;
+
   function resetIframe(){
     const blob = new Blob([bootSrc], {type:'text/html'});
     const url = URL.createObjectURL(blob);
@@ -252,7 +252,7 @@
     showAllButtons();
   }
 
-  // 親←子のメッセージ
+  // 親←子
   addEventListener('message', (ev)=>{
     const d = ev.data || {};
     if(d.type==='ready'){ boxReady = true; log('sandbox ready'); return; }
@@ -260,21 +260,18 @@
     if(d.type==='setButtons'){ applyButtonVisibility(Array.isArray(d.buttons)? d.buttons: []); log('buttons set: '+JSON.stringify(d.buttons||[])); }
   });
 
-  // 子へ runCode（ready待ちで確実に起動）
   async function runCodeWhenReady(code){
-    if(!boxReady){
-      for(let i=0;i<40 && !boxReady;i++){ await new Promise(r=>setTimeout(r, 50)); }
-    }
+    // 2秒までポーリング（40 * 50ms）
+    for(let i=0;i<40 && !boxReady;i++){ await new Promise(r=>setTimeout(r, 50)); }
     if(!boxReady){ log('子iframeがreadyになりませんでした','error'); return; }
     iframe.contentWindow.postMessage({type:'runCode', code}, '*');
     setState('running');
   }
 
-  // ファイル実行
+  // ユーザーJSファイル実行
   async function runScriptFile(f){
     if(!f || !f.name.endsWith('.js')){ log('拡張子 .js のファイルを選択してください','warn'); return; }
     resetIframe();
-    await new Promise(r=>setTimeout(r, 30));
     const text = await f.text();
     const needsExport = !/export\s+default\s+/m.test(text);
     const wrapped = needsExport ? `${text}\nexport default game;` : text;
@@ -282,7 +279,6 @@
     log(`実行開始: ${f.name}`);
   }
 
-  // ファイル選択
   file.addEventListener('change',()=>{
     const f = file.files && file.files[0];
     if(!f){ if(filenameEl) filenameEl.textContent = '未選択'; return; }
@@ -338,12 +334,14 @@ export const game = {
 export default game;
 `;
 
-  // サンプル実行（readyハンドシェイク後に送信）
-  runSampleBtn.addEventListener('click', async ()=>{
+  // クリック二重化: グローバル公開 + イベント登録
+  window.runSample = async function(){
+    log('サンプルボタン: click 受信');
     resetIframe();
     await runCodeWhenReady(sample);
     log('実行開始: sample-game.js');
-  });
+  };
+  runSampleBtn && runSampleBtn.addEventListener('click', window.runSample);
 
   restartBtn.addEventListener('click', ()=>{ resetIframe(); setState('idle'); log('restart'); });
 
