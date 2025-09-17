@@ -85,7 +85,7 @@
 <body>
   <header>
     <h1>Browser Game Player (Mobile-First) <span class="badge">sandboxed</span></h1>
-    <div class="sub">スマホ前提：ファイル参照でJSスクリプトを選び、安全なiframeで実行。SFC風配置の疑似コントローラー。ゲーム側の指定で未使用ボタンを自動非表示。</div>
+    <div class="sub">スマホ前提：ファイル参照でJSスクリプトを選び、安全なiframeで実行。SFC風配置の疑似コントローラー。未使用ボタンはゲーム側の宣言で自動非表示。</div>
   </header>
 
   <main>
@@ -105,7 +105,7 @@
         <div>必須メソッド:</div><div><code>init(api)</code>, <code>update(dt, input)</code>, <code>render(ctx)</code></div>
         <div>提供API:</div><div><code>api.canvas, api.ctx, api.loadImage(url), api.playBeep(), api.setButtons(list)</code></div>
       </div>
-      <p class="small">※ セキュリティ: 子iframeは <code>allow-scripts</code> のみ。ネットワーク不可、通信は <code>postMessage</code> のみ。</p>
+      <p class="small">※ 子iframeは <code>allow-scripts</code> のみ（別オリジン相当）。通信は <code>postMessage</code> 経由。</p>
       <h2 style="margin-top:14px;">ログ</h2>
       <pre id="log" class="log"></pre>
     </section>
@@ -130,7 +130,7 @@
         <div class="right">
           <button id="kR" class="btn small shoulder" aria-label="R">R</button>
           <div class="legend" style="width:100%; text-align:right;">ABXY</div>
-          <!-- YをXとBの間（左）に配置：上X / 左Y / 右A / 下B -->
+          <!-- 上X / 左Y / 右A / 下B -->
           <div class="diamond" aria-label="ABXY diamond">
             <div></div>                       <button id="kX" class="btn round" aria-label="X">X</button> <div></div>
             <button id="kY" class="btn round" aria-label="Y">Y</button> <div></div> <button id="kA" class="btn round" aria-label="A">A</button>
@@ -160,18 +160,15 @@
   const runSampleBtn = $('#runSample');
   const restartBtn = $('#restart');
 
-  // ボタン名 -> DOM ID
   const BUTTON_MAP = {
     up: 'kUp', down: 'kDown', left: 'kLeft', right: 'kRight',
     a: 'kA', b: 'kB', x: 'kX', y: 'kY', l: 'kL', r: 'kR', start: 'kStart', select: 'kSelect'
   };
-  // ボタン名 -> 仮想キー
   const KEY_MAP = {
     up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight',
     a: 'z', b: 'x', x: 's', y: 'a', l: 'q', r: 'w', start: 'Enter', select: 'Shift'
   };
 
-  // 表示制御
   function allButtons(){ return Object.values(BUTTON_MAP).map(id=>document.getElementById(id)).filter(Boolean); }
   function showAllButtons(){ allButtons().forEach(el=>el.classList.remove('hidden')); }
   function applyButtonVisibility(list){
@@ -179,12 +176,12 @@
     for(const [name,id] of Object.entries(BUTTON_MAP)){
       const el = document.getElementById(id);
       if(!el) continue;
-      if(allow.size===0 || allow.has(name)) el.classList.remove('hidden');
-      else el.classList.add('hidden');
+      if(allow.size===0 || allow.has(name)) el.classList.remove('hidden'); else el.classList.add('hidden');
     }
   }
 
-  // 子iframeのブートHTML（子側でBlob import）
+  /* 子iframeブートHTML
+     ※ 重要: </script> は <\/script> にエスケープしてあります（親<script>が閉じないように） */
   const bootSrc =
 `<!doctype html><html><head><meta charset="utf-8"><style>
   html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}
@@ -233,7 +230,7 @@
     } else if(d.type==='vkey'){ setVKey(d.key, !!d.down); }
   });
 })();
-</script>
+<\/script>
 </body></html>`;
 
   function log(msg, level='info'){ const line = `[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; }
@@ -245,20 +242,15 @@
     iframe.src = url;
     setState('booting');
     log('sandbox iframe booting...');
-    showAllButtons(); // 初期は全表示（ゲームが setButtons で絞る）
+    showAllButtons();
   }
 
-  // 子からの通知
   addEventListener('message', (ev)=>{
     const d = ev.data || {};
     if(d.type==='log') log(d.msg, d.level);
-    if(d.type==='setButtons'){
-      applyButtonVisibility(Array.isArray(d.buttons)? d.buttons: []);
-      log('buttons set: '+JSON.stringify(d.buttons||[]));
-    }
+    if(d.type==='setButtons'){ applyButtonVisibility(Array.isArray(d.buttons)? d.buttons: []); log('buttons set: '+JSON.stringify(d.buttons||[])); }
   });
 
-  // ファイル実行
   async function runScriptFile(f){
     if(!f || !f.name.endsWith('.js')){ log('拡張子 .js のファイルを選択してください','warn'); return; }
     resetIframe();
@@ -271,7 +263,6 @@
     log(`実行開始: ${f.name}`);
   }
 
-  // ファイル選択
   file.addEventListener('change',()=>{
     const f = file.files && file.files[0];
     if(!f){ if(filenameEl) filenameEl.textContent = '未選択'; return; }
@@ -279,7 +270,6 @@
     runScriptFile(f);
   });
 
-  // 疑似コントローラー
   function bindVKey(id, key){
     const el = document.getElementById(id);
     if(!el) return;
@@ -291,7 +281,7 @@
   }
   for(const [name,id] of Object.entries(BUTTON_MAP)) bindVKey(id, KEY_MAP[name]);
 
-  // === サンプルゲーム（SFCレイアウトで動作） ===
+  // === サンプルゲーム ===
   const sample = `
 // --- Sample Game (no external assets) ---
 // Controls: D-Pad Left/Right + A (jump). Start optional.
@@ -342,10 +332,5 @@ export default game;
   resetIframe();
 })();
 </script>
-
-<!--
-公開: このファイルを index.html としてGitHub Pagesに置くだけ。
-ゲーム側: export default game か window.game = {...}。未指定なら全ボタン表示、init(api)の api.setButtons([...]) で自動非表示。
--->
 </body>
 </html>
