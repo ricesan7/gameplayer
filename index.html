@@ -133,7 +133,6 @@
   function allButtons(){ return Object.values(BUTTON_MAP).map(id=>document.getElementById(id)).filter(Boolean); }
   function showAllButtons(){ allButtons().forEach(el=>el.classList.remove('hidden')); }
   function applyButtonVisibility(list){
-    // list: ['left','right','a','b', ...]
     const allow = new Set((list||[]).map(v=>String(v).toLowerCase()));
     for(const [name,id] of Object.entries(BUTTON_MAP)){
       const el = document.getElementById(id);
@@ -143,7 +142,14 @@
     }
   }
 
-  const bootSrc = `<!doctype html><html><head><meta charset=\"utf-8\"><style>html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{display:block;margin:0 auto;background:#000}</style></head><body><canvas id=\"c\" width=\"640\" height=\"360\"></canvas><script>
+  /* 子iframeのブートHTML（子側でBlob importする方式） */
+  const bootSrc =
+`<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}
+#c{display:block;margin:0 auto;background:#000}
+</style></head><body>
+<canvas id="c" width="640" height="360"></canvas>
+<script type="module">
 (function(){
   const ctx = document.getElementById('c').getContext('2d');
   const api = {
@@ -172,17 +178,10 @@
 
   addEventListener('message', async (ev)=>{
     const d=ev.data||{};
-    if(d.type==='run'){
+    if(d.type==='runCode'){
       try{
-        const mod = await import(d.url);
-        game = mod.default || window.game || mod.game;
-        if(!game) throw new Error('game object not found: export default game');
-        if(game.init) await game.init(api);
-        parent.postMessage({type:'log',level:'info',msg:'game loaded'} , '*');
-      }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }
-    } else if(d.type==='runCode'){
-      try{
-        const url = URL.createObjectURL(new Blob([d.code||''], {type:'text/javascript'}));
+        const code = (d.code||'') + "\\n//# sourceURL=user-game.js";
+        const url = URL.createObjectURL(new Blob([code], {type:'application/javascript'}));
         const mod = await import(url);
         game = mod.default || window.game || mod.game;
         if(!game) throw new Error('game object not found: export default game');
@@ -192,7 +191,8 @@
     } else if(d.type==='vkey'){ setVKey(d.key, !!d.down); }
   });
 })();
-<\/script></body></html>`;
+</script>
+</body></html>`;
 
   function log(msg, level='info'){ const line = `[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; }
   function setState(s){ stateEl.textContent = s; }
@@ -203,11 +203,10 @@
     iframe.src = url;
     setState('booting');
     log('sandbox iframe booting...');
-    // Default: show all buttons until game narrows them
-    showAllButtons();
+    showAllButtons(); // 初期は全表示（ゲームが setButtons で絞る）
   }
 
-  // Receive logs & setup from sandbox
+  // 子からの通知
   addEventListener('message', (ev)=>{
     const d = ev.data || {};
     if(d.type==='log') log(d.msg, d.level);
@@ -217,19 +216,20 @@
     }
   });
 
+  // ファイル実行（ユーザーJS）
   async function runScriptFile(f){
     if(!f || !f.name.endsWith('.js')){ log('拡張子 .js のファイルを選択してください','warn'); return; }
     resetIframe();
     await new Promise(r=>setTimeout(r, 50));
     const text = await f.text();
-    const wrapped = `// ESM Module Wrapper\n${text}\nexport { game as default };`;
-    // 重要: 子iframe側でimportさせる
+    const needsExport = !/export\\s+default\\s+/m.test(text);
+    const wrapped = needsExport ? `${text}\nexport default game;` : text;
     iframe.contentWindow.postMessage({type:'runCode', code: wrapped}, '*');
     setState('running');
     log(`実行開始: ${f.name}`);
   }
 
-  // File picker (mobile-first)
+  // ファイル選択
   file.addEventListener('change',()=>{
     const f = file.files && file.files[0];
     if(!f){ if(filenameEl) filenameEl.textContent = '未選択'; return; }
@@ -237,7 +237,7 @@
     runScriptFile(f);
   });
 
-  // Virtual Controller handlers
+  // 疑似コントローラー
   function bindVKey(id, key){
     const el = document.getElementById(id);
     if(!el) return;
@@ -249,53 +249,58 @@
   }
   for(const [name,id] of Object.entries(BUTTON_MAP)) bindVKey(id, KEY_MAP[name]);
 
-  // Sample game (auto-hide demo)
+  // サンプル（外部アセットやSVGを使わない純Canvas版）
   const sample = `
-// --- Sample Game (auto-hide buttons demo) ---
-// Only uses left/right + A + Start
+// --- Sample Game (no external assets) ---
+// Uses: Left/Right + A (jump) + optional Start
 const game = {
-  x: 0, y: 160, vx: 60, sprite: null, t: 0,
+  x: 40, y: 300, vy: 0, t: 0, score: 0,
   async init(api){
     api.setButtons(['left','right','a','start']);
-    this.sprite = await api.loadImage('data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'16\\' height=\\'16\\'><rect width=\\'16\\' height=\\'16\\' fill=\\'#111'/><circle cx=\\'8\\' cy=\\'8\\' r=\\'6\\' fill=\\'#4ade80'/></svg>'))
-    api.playBeep();
+    this.api = api;
   },
   update(dt,input){
-    if(input.keys.has('ArrowLeft')) this.x -= 100*dt;
-    if(input.keys.has('ArrowRight')) this.x += 100*dt;
-    if(input.keys.has('z')) this.x += Math.sin(this.t*6)*30*dt; // A: jitter dash
-    if(input.keys.has('Enter')) {/* Start pressed */}
     this.t += dt;
+    if(input.keys.has('ArrowLeft')) this.x -= 120*dt;
+    if(input.keys.has('ArrowRight')) this.x += 120*dt;
+    if(input.keys.has('z') && this.y>=300) this.vy = -260; // A: jump
+    this.vy += 900*dt; this.y += this.vy*dt; if(this.y>300){ this.y=300; this.vy=0; }
+    this.score += dt*10;
   },
   render(ctx){
     const W=ctx.canvas.width, H=ctx.canvas.height;
     ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
-    ctx.strokeStyle = '#1f2937'; for(let i=0;i<W;i+=16){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}
+    ctx.strokeStyle = '#1f2937';
+    for(let i=0;i<W;i+=16){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}
     for(let j=0;j<H;j+=16){ctx.beginPath();ctx.moveTo(0,j);ctx.lineTo(W,j);ctx.stroke();}
-    if(this.sprite) ctx.drawImage(this.sprite, Math.round(this.x), Math.round(this.y));
+    // player: green circle
+    ctx.beginPath(); ctx.arc(Math.round(this.x), Math.round(this.y), 8, 0, Math.PI*2);
+    ctx.fillStyle = '#4ade80'; ctx.fill();
+    // HUD
     ctx.fillStyle = '#9aa4af'; ctx.font = '12px ui-monospace';
-    ctx.fillText('Uses: Left/Right + A(z) + Start(Enter) — others auto-hidden', 8, 16);
+    ctx.fillText('Left/Right + A(z) to jump', 8, 16);
+    ctx.fillText('Score: '+Math.floor(this.score), 8, 32);
   }
 };
 `;
 
   runSampleBtn.addEventListener('click', ()=>{
-    const blob = new Blob([sample], {type:'text/javascript'});
-    const fileLike = new File([blob], 'sample-game.js', {type:'text/javascript'});
+    const blob = new Blob([sample], {type:'application/javascript'});
+    const fileLike = new File([blob], 'sample-game.js', {type:'application/javascript'});
     runScriptFile(fileLike);
   });
 
   restartBtn.addEventListener('click', ()=>{ resetIframe(); setState('idle'); log('restart'); });
 
-  // boot once
+  // 初期起動
   resetIframe();
 })();
 </script>
 
 <!--
 公開手順: このファイルを index.html として GitHub Pages (Deploy from a branch: main / root) で公開。
-ゲーム側: init(api) 内で api.setButtons(['left','right','a','start']) のように使用ボタンを宣言してください。
-指定しなければデフォルトで全ボタン表示。
+ゲーム側: export default game か window.game = {...} を定義してください（後者は本プレイヤーが export 付きにラップします）。
+未指定なら全ボタン表示。init(api) 内で api.setButtons([...]) を呼ぶと未使用ボタンが自動的に非表示になります。
 -->
 </body>
-</html>
+    </html>
