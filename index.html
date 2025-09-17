@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Game Player (Mobile, D-Pad 4way + A/B)</title>
+<title>Game Player (Mobile, D-Pad 4way + A/B, No Auto-Hide)</title>
 <style>
   :root { --gap:12px; --btn:56px; --round:64px; }
   * { box-sizing: border-box; }
@@ -37,11 +37,12 @@
   .shoulder{ position:absolute; top:0; width:72px; height:40px; border-radius:20px; font-size:14px; display:flex; align-items:center; justify-content:center; background:#1f2937; border:1px solid #334155; }
   #kL{ left:0; } #kR{ right:0; }
 
-  /* D-Pad 4-way (3x3グリッド) */
+  /* D-Pad 4-way (3x3) */
   .dpad{ position:absolute; bottom:0; left:0; display:grid;
     grid-template-columns:var(--btn) var(--btn) var(--btn);
     grid-template-rows:var(--btn) var(--btn) var(--btn);
     gap:6px; touch-action:none; user-select:none; }
+
   /* A/B only */
   .abonly{ position:absolute; bottom:0; right:0; display:flex; gap:12px; touch-action:none; user-select:none; }
 
@@ -57,7 +58,7 @@
 <body>
 <header>
   <h1>Browser Game Player <span class="badge">sandboxed</span></h1>
-  <div class="sub">端末/URL/サンプルのJSを安全に実行。D-Pad 4方向＋A/B（X/Yなし）。未使用ボタンはゲーム側宣言で自動非表示。</div>
+  <div class="sub">端末/URL/サンプルのJSを安全に実行。D-Pad 4方向＋A/B（X/Yなし）。※自動非表示ロジックは削除済み</div>
 </header>
 
 <main>
@@ -88,7 +89,7 @@
     <div class="kv" style="margin-top:12px;">
       <div>想定エントリ:</div><div><code>export default game</code> または <code>window.game = {...}</code></div>
       <div>必須:</div><div><code>init(api)</code>, <code>update(dt,input)</code>, <code>render(ctx)</code></div>
-      <div>提供API:</div><div><code>api.canvas / api.ctx / api.loadImage(url) / api.playBeep() / api.setButtons(list)</code></div>
+      <div>提供API:</div><div><code>api.canvas / api.ctx / api.loadImage(url) / api.playBeep() / api.setButtons(list: 無視されます)</code></div>
     </div>
 
     <h2 style="margin-top:14px;">ログ</h2>
@@ -138,7 +139,7 @@
   const logEl=$('#log'), stateEl=$('#state'), iframe=$('#box');
   const fileIn=$('#file'), fileNameEl=$('#filename'), urlIn=$('#url');
 
-  // DOMに存在するボタンだけをマッピング（X/Yは削除済み）
+  // 存在するボタンのみマッピング
   const BUTTON_MAP = {
     up:'kUp', down:'kDown', left:'kLeft', right:'kRight',
     a:'kA', b:'kB', l:'kL', r:'kR', start:'kStart', select:'kSelect'
@@ -148,21 +149,8 @@
     a:'z', b:'x', l:'q', r:'w', start:'Enter', select:'Shift'
   };
 
-  // ログ
   function log(msg, level='info'){ const line=`[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent+=line; logEl.scrollTop=logEl.scrollHeight; }
   function setState(s){ stateEl.textContent=s; }
-
-  // ゲーム宣言された以外を自動非表示
-  function applyButtonVisibility(list){
-    const allow = new Set((list||[]).map(v=>String(v).toLowerCase()));
-    for(const [name,id] of Object.entries(BUTTON_MAP)){
-      const el=document.getElementById(id); if(!el) continue;
-      el.classList.toggle('hidden', allow.size>0 && !allow.has(name));
-    }
-  }
-  function showAllButtons(){
-    for(const id of Object.values(BUTTON_MAP)){ const el=document.getElementById(id); el && el.classList.remove('hidden'); }
-  }
 
   // 子iframeブート（</script>はエスケープ）
   const bootSrc =
@@ -178,6 +166,7 @@ html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{displa
     ctx,
     loadImage:(url)=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;}),
     playBeep:()=>{try{const A=window.AudioContext||window.webkitAudioContext; if(!A) return; const a=new A(); const o=a.createOscillator();o.type='square';o.frequency.value=440; const g=a.createGain();g.gain.value=0.05; o.connect(g).connect(a.destination); o.start(); setTimeout(()=>{o.stop(); a.close();},120);}catch(e){}},
+    // setButtons は親が無視するが、下位互換のため通知だけ送る
     setButtons:(list)=>parent.postMessage({type:'setButtons',buttons:Array.isArray(list)?list:[]},'*')
   };
   const input={keys:new Set(),mouse:{x:0,y:0,down:false}};
@@ -213,13 +202,15 @@ html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{displa
   let boxReady=false;
   function resetIframe(){
     iframe.src = URL.createObjectURL(new Blob([bootSrc],{type:'text/html'}));
-    boxReady=false; setState('booting'); log('sandbox iframe booting...'); showAllButtons();
+    boxReady=false; setState('booting'); log('sandbox iframe booting...');
+    // 常に全ボタン表示（自動非表示なし）
+    for(const id of Object.values(BUTTON_MAP)){ const el=document.getElementById(id); el && el.classList.remove('hidden'); }
   }
   addEventListener('message',(ev)=>{
     const d=ev.data||{};
     if(d.type==='ready'){ boxReady=true; log('sandbox ready'); }
     else if(d.type==='log'){ log(d.msg,d.level); }
-    else if(d.type==='setButtons'){ applyButtonVisibility(Array.isArray(d.buttons)?d.buttons:[]); log('buttons set: '+JSON.stringify(d.buttons||[])); }
+    else if(d.type==='setButtons'){ log('setButtons ignored (auto-hide disabled)'); } // ここで無視
   });
   async function runCodeWhenReady(code){
     for(let i=0;i<40 && !boxReady;i++) await new Promise(r=>setTimeout(r,50));
@@ -234,10 +225,10 @@ html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{displa
     if(!f.name.endsWith('.js')){ log('.js ファイルを選んでください','warn'); return; }
     resetIframe();
     const text = await f.text();
-    const needsExport = !/export\\s+default\\s+/m.test(text);
-    const wrapped = needsExport ? \`\${text}\\nexport default game;\` : text;
+    const needsExport = !/export\s+default\s+/m.test(text);
+    const wrapped = needsExport ? `${text}\nexport default game;` : text;
     await runCodeWhenReady(wrapped);
-    log(\`実行開始(ローカル): \${f.name}\`);
+    log(`実行開始(ローカル): ${f.name}`);
   }
 
   // URLから実行（CORS前提）
@@ -251,8 +242,8 @@ html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{displa
       const res = await fetch(url, { cache:'no-store', mode:'cors' });
       if(!res.ok){ log('HTTPエラー: '+res.status+' '+res.statusText,'error'); return; }
       const text = await res.text();
-      const needsExport = !/export\\s+default\\s+/m.test(text);
-      const wrapped = needsExport ? \`\${text}\\nexport default game;\` : text;
+      const needsExport = !/export\s+default\s+/m.test(text);
+      const wrapped = needsExport ? `${text}\nexport default game;` : text;
       await runCodeWhenReady(wrapped);
       log('実行開始(URL): '+url);
     }catch(e){
