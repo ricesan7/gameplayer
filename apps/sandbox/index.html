@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src data: blob:; media-src 'none';
+               style-src 'unsafe-inline'; script-src 'unsafe-eval' 'unsafe-inline';
+               connect-src 'none'; frame-ancestors 'self';">
+<title>sandbox</title>
+<style>html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{display:block;margin:0 auto}</style>
+<canvas id="c" width="640" height="360"></canvas>
+<script type="module">
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha:false });
+  const api = {
+    canvas, ctx,
+    loadImage: (url)=> new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; }),
+    playBeep: ()=>{ try{ const A = window.AudioContext||window.webkitAudioContext; if(!A) return;
+      const a=new A(), o=a.createOscillator(), g=a.createGain(); o.type='square'; o.frequency.value=440; g.gain.value=0.06;
+      o.connect(g).connect(a.destination); o.start(); setTimeout(()=>{o.stop(); a.close();},120);}catch{}}
+  };
+  const input = { keys:new Set(), mouse:{x:0,y:0,down:false} };
+  addEventListener('keydown', e=> input.keys.add(e.key));
+  addEventListener('keyup',   e=> input.keys.delete(e.key));
+  canvas.addEventListener('mousemove', e=>{ const r=canvas.getBoundingClientRect(); input.mouse.x=e.clientX-r.left; input.mouse.y=e.clientY-r.top; });
+  canvas.addEventListener('mousedown', ()=> input.mouse.down=true);
+  canvas.addEventListener('mouseup',   ()=> input.mouse.down=false);
+
+  let game=null, last=performance.now();
+  function loop(t){
+    const dt=Math.min(0.05,(t-last)/1000); last=t;
+    try{ if(game?.update) game.update(dt,input); if(game?.render){ ctx.imageSmoothingEnabled=false; game.render(ctx); } }
+    catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  parent.postMessage({type:'ready'},'*');
+
+  addEventListener('message', async (ev)=>{
+    const d=ev.data||{};
+    if(d.type==='runCode'){
+      try{
+        const url = URL.createObjectURL(new Blob([String(d.code||'') + "\n//# sourceURL=user-game.js"], {type:'text/javascript'}));
+        const mod = await import(url);
+        game = mod.default || mod.game || window.game;
+        if(!game) throw new Error('game object not found');
+        if(game.init) await game.init(api);
+        parent.postMessage({type:'log',level:'info',msg:'game loaded'},'*');
+      }catch(e){ parent.postMessage({type:'log',level:'error',msg:'runCode failed: '+(e.message||e)},'*'); }
+    } else if(d.type==='vkey'){
+      if(d.down) input.keys.add(d.key); else input.keys.delete(d.key);
+    }
+  });
+</script>
