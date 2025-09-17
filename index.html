@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Game Player (GitHub Pages MVP + Controller)</title>
+  <title>Game Player (Mobile-First, Auto-Hide Buttons)</title>
   <style>
     :root { --gap: 12px; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; margin: 0; background: #0b0f12; color: #e7e9ea; }
@@ -15,40 +15,45 @@
     @media (max-width: 900px){ main { grid-template-columns: 1fr; } }
     .panel { background: #0f1418; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; }
     .panel h2 { font-size: 14px; margin: 0 0 8px 0; color: #c7d0d9; }
-    .drop { border: 1.5px dashed #334155; border-radius: 12px; padding: 16px; text-align: center; color:#9aa4af; cursor: pointer; }
-    .drop.dragover { background:#0b1220; border-color:#60a5fa; color:#dbeafe; }
-    button { appearance: none; background:#1f2937; color:#e7e9ea; border:1px solid #334155; padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
+    button, input[type="file"] { appearance: none; background:#1f2937; color:#e7e9ea; border:1px solid #334155; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:600; font-size:16px; }
     button:hover { background:#273244; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+    input[type="file"]::-webkit-file-upload-button{ appearance:none; border:none; background:#273244; color:#e7e9ea; padding:10px 12px; border-radius:10px; font-weight:600; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
     .kv { display:grid; grid-template-columns: 120px 1fr; gap: 6px 8px; font-size:12px; color:#9aa4af; }
     .log { height: 140px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; }
     iframe { width: 100%; height: 520px; background:#000; border:1px solid #1f2937; border-radius:12px; }
     .badge { background:#0b1220; border:1px solid #334155; padding:2px 6px; border-radius:999px; font-size:11px; color:#93c5fd; }
     code { background:#0b1220; border:1px solid #1f2937; padding: 2px 6px; border-radius:8px; }
-    .small { font-size: 12px; color:#9aa4af; }
-    /* Controller */
-    #controller { margin-top: 16px; display:flex; justify-content:center; gap:40px; flex-wrap:wrap; }
-    .dpad, .buttons { position:relative; width:120px; height:120px; }
-    .dpad button, .buttons button { position:absolute; width:40px; height:40px; border-radius:8px; background:#1f2937; color:#e7e9ea; border:1px solid #334155; font-weight:bold; cursor:pointer; }
-    .dpad button:active, .buttons button:active { background:#2563eb; }
-    .dpad .up { top:0; left:40px; }
-    .dpad .down { bottom:0; left:40px; }
-    .dpad .left { top:40px; left:0; }
-    .dpad .right { top:40px; right:0; }
-    .buttons .a { top:40px; right:0; background:#16a34a; }
-    .buttons .b { bottom:40px; left:0; background:#dc2626; }
+    .small { font-size: 12px; color: #9aa4af; }
+    .hidden { display: none !important; }
+    /* Virtual Controller */
+    .controller { display:grid; grid-template-columns: 1fr 220px; gap: 12px; align-items: center; margin-top: 12px; }
+    @media (max-width: 900px){ .controller { grid-template-columns: 1fr; } }
+    .pad { display:grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px; gap:6px; width:max-content; user-select:none; touch-action:none; }
+    .btn { width:56px; height:56px; border-radius:12px; border:1px solid #334155; background:#141a1f; display:flex; align-items:center; justify-content:center; font-weight:700; cursor:pointer; }
+    .btn:active, .btn.on { background:#1f2937; }
+    .ab { display:flex; gap:10px; align-items:center; justify-content:flex-start; }
+    .btn.round { border-radius:999px; width:64px; height:64px; }
+    .legend { font-size:12px; color:#9aa4af; }
+    /* SFC-like */
+    .diamond { display:grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px; gap:10px; width:max-content; }
+    .shoulders { display:flex; gap:10px; margin-top:8px; flex-wrap:wrap; }
+    .startsel { display:flex; gap:10px; margin-top:8px; align-items:center; }
+    .btn.small { width:72px; height:40px; border-radius:20px; font-size:14px; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Browser Game Player (GitHub Pages MVP + Controller) <span class="badge">sandboxed</span></h1>
-    <div class="sub">ローカルJSスクリプトを安全なiframeで実行し、Canvasに描画します。タッチ/疑似コントローラー対応。</div>
+    <h1>Browser Game Player (Mobile-First) <span class="badge">sandboxed</span></h1>
+    <div class="sub">スマホ前提：ファイル参照でJSスクリプトを選び、安全なiframeで実行。疑似コントローラー付き。ゲーム側の指定で未使用ボタンを自動非表示。</div>
   </header>
   <main>
     <section class="panel">
       <h2>1) スクリプトをアップロード</h2>
-      <div id="drop" class="drop" tabindex="0">ここに <b>.js</b> をドラッグ＆ドロップ、またはクリックで選択</div>
-      <input id="file" type="file" accept=".js" hidden />
+      <div class="row">
+        <input id="file" type="file" accept=".js" />
+        <span id="filename" class="small">未選択</span>
+      </div>
       <div class="row" style="margin-top:8px;">
         <button id="runSample">サンプルを実行</button>
         <button id="restart">再起動</button>
@@ -57,26 +62,50 @@
       <div class="kv" style="margin-top:12px;">
         <div>想定エントリ:</div><div><code>export default game</code> または <code>window.game = {...}</code></div>
         <div>必須メソッド:</div><div><code>init(api)</code>, <code>update(dt, input)</code>, <code>render(ctx)</code></div>
-        <div>提供API:</div><div><code>api.canvas, api.ctx, api.loadImage(url), api.playBeep()</code></div>
+        <div>提供API:</div><div><code>api.canvas, api.ctx, api.loadImage(url), api.playBeep(), api.setButtons(list)</code></div>
       </div>
+      <p class="small">※ セキュリティ: ユーザースクリプトは <code>&lt;iframe sandbox="allow-scripts"&gt;</code> で同一オリジンを切り離し実行。親DOM・ネットワークは不可、通信は <code>postMessage</code> のみ。</p>
       <h2 style="margin-top:14px;">ログ</h2>
       <pre id="log" class="log"></pre>
-      <h2>疑似コントローラー</h2>
-      <div id="controller">
-        <div class="dpad">
-          <button class="up">↑</button>
-          <button class="down">↓</button>
-          <button class="left">←</button>
-          <button class="right">→</button>
-        </div>
-        <div class="buttons">
-          <button class="a">A</button>
-          <button class="b">B</button>
-        </div>
-      </div>
     </section><section class="panel">
   <h2>2) 実行ビュー</h2>
   <iframe id="box" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+  <div class="controller" aria-label="On-screen controller">
+    <div>
+      <div class="legend">D-Pad</div>
+      <div class="pad">
+        <div></div>
+        <button id="kUp" class="btn" aria-label="Up">▲</button>
+        <div></div>
+        <button id="kLeft" class="btn" aria-label="Left">◀</button>
+        <div></div>
+        <button id="kRight" class="btn" aria-label="Right">▶</button>
+        <div></div>
+        <button id="kDown" class="btn" aria-label="Down">▼</button>
+        <div></div>
+      </div>
+    </div>
+    <div>
+      <div class="legend">Buttons (ABXY + L/R + Start/Select)</div>
+      <div class="shoulders">
+        <button id="kL" class="btn small" aria-label="L">L</button>
+        <button id="kR" class="btn small" aria-label="R">R</button>
+      </div>
+      <div class="diamond" aria-label="ABXY diamond">
+        <div></div>
+        <button id="kX" class="btn round" aria-label="X">X</button>
+        <div></div>
+        <button id="kY" class="btn round" aria-label="Y">Y</button>
+        <button id="kA" class="btn round" aria-label="A">A</button>
+        <button id="kB" class="btn round" aria-label="B">B</button>
+        <div></div>
+      </div>
+      <div class="startsel">
+        <button id="kSelect" class="btn small" aria-label="Select">Select</button>
+        <button id="kStart" class="btn small" aria-label="Start">Start</button>
+      </div>
+    </div>
+  </div>
 </section>
 
   </main><script>
@@ -84,33 +113,57 @@
   const $ = (s)=>document.querySelector(s);
   const logEl = $('#log');
   const stateEl = $('#state');
-  const drop = $('#drop');
   const file = $('#file');
+  const filenameEl = $('#filename');
   const iframe = $('#box');
   const runSampleBtn = $('#runSample');
   const restartBtn = $('#restart');
 
-  const bootSrc = `<!doctype html><html><head><meta charset=\"utf-8\"><style>html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{display:block;margin:0 auto;background:#000}</style></head><body><canvas id=\"c\" width=\"640\" height=\"360\"></canvas><script>\n(function(){\n  const ctx = document.getElementById('c').getContext('2d');\n  const api = {\n    canvas: document.getElementById('c'),\n    ctx,\n    loadImage: (url)=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;}),\n    playBeep: ()=>{try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.type='square';o.frequency.value=440;const g=a.createGain();g.gain.value=0.05;o.connect(g).connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close();},120);}catch(e){}}\n  };\n  const input={ keys:new Set(), mouse:{x:0,y:0,down:false} };\n  onkeydown=e=>input.keys.add(e.key);\n  onkeyup=e=>input.keys.delete(e.key);\n  onmousemove=e=>{const r=api.canvas.getBoundingClientRect(); input.mouse.x=e.clientX-r.left; input.mouse.y=e.clientY-r.top;};\n  onmousedown=()=>input.mouse.down=true; onmouseup=()=>input.mouse.down=false;\n\n  let game = null;\n  let last=performance.now();\n  function loop(t){\n    const dt=Math.min(0.05,(t-last)/1000); last=t;\n    try{ if(game&&game.update) game.update(dt,input); if(game&&game.render) { ctx.imageSmoothingEnabled=false; game.render(ctx);} }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }\n    requestAnimationFrame(loop);\n  }\n  requestAnimationFrame(loop);\n\n  addEventListener('message', async (ev)=>{\n    const d=ev.data||{};\n    if(d.type==='run'){\n      try{\n        const mod = await import(d.url);\n        game = mod.default || window.game || mod.game;\n        if(!game) throw new Error('game object not found: export default game');\n        if(game.init) await game.init(api);\n        parent.postMessage({type:'log',level:'info',msg:'game loaded'} , '*');\n      }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }\n    }\n    if(d.type==='input'){\n      if(d.action==='down') input.keys.add(d.key);\n      if(d.action==='up') input.keys.delete(d.key);\n    }\n  });\n})();\n<\/script></body></html>`;function log(msg, level='info'){ const line = [${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; } function setState(s){ stateEl.textContent = s; }
+  const BUTTON_MAP = {
+    up: 'kUp', down: 'kDown', left: 'kLeft', right: 'kRight',
+    a: 'kA', b: 'kB', x: 'kX', y: 'kY', l: 'kL', r: 'kR', start: 'kStart', select: 'kSelect'
+  };
+  const KEY_MAP = {
+    up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight',
+    a: 'z', b: 'x', x: 's', y: 'a', l: 'q', r: 'w', start: 'Enter', select: 'Shift'
+  };
 
-function resetIframe(){ const blob = new Blob([bootSrc], {type:'text/html'}); const url = URL.createObjectURL(blob); iframe.src = url; setState('booting'); log('sandbox iframe booting...'); }
+  function allButtons(){ return Object.values(BUTTON_MAP).map(id=>document.getElementById(id)).filter(Boolean); }
+  function showAllButtons(){ allButtons().forEach(el=>el.classList.remove('hidden')); }
+  function applyButtonVisibility(list){
+    // list: ['left','right','a','b', ...]
+    const allow = new Set((list||[]).map(v=>String(v).toLowerCase()));
+    for(const [name,id] of Object.entries(BUTTON_MAP)){
+      const el = document.getElementById(id);
+      if(!el) continue;
+      if(allow.size===0 || allow.has(name)) el.classList.remove('hidden');
+      else el.classList.add('hidden');
+    }
+  }
 
-// Receive logs from sandbox addEventListener('message', (ev)=>{ const d = ev.data || {}; if(d.type==='log') log(d.msg, d.level); });
+  const bootSrc = `<!doctype html><html><head><meta charset=\"utf-8\"><style>html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{display:block;margin:0 auto;background:#000}</style></head><body><canvas id=\"c\" width=\"640\" height=\"360\"></canvas><script>\n(function(){\n  const ctx = document.getElementById('c').getContext('2d');\n  const api = {\n    canvas: document.getElementById('c'),\n    ctx,\n    loadImage: (url)=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;}),\n    playBeep: ()=>{try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.type='square';o.frequency.value=440;const g=a.createGain();g.gain.value=0.05;o.connect(g).connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close();},120);}catch(e){}} ,\n    setButtons: (list)=>{ parent.postMessage({type:'setButtons', buttons: Array.isArray(list)? list: []}, '*'); }\n  };\n  const input={ keys:new Set(), mouse:{x:0,y:0,down:false} };\n  onkeydown=e=>input.keys.add(e.key);\n  onkeyup=e=>input.keys.delete(e.key);\n  onmousemove=e=>{const r=api.canvas.getBoundingClientRect(); input.mouse.x=e.clientX-r.left; input.mouse.y=e.clientY-r.top;};\n  onmousedown=()=>input.mouse.down=true; onmouseup=()=>input.mouse.down=false;\n\n  function setVKey(key, pressed){ if(pressed) input.keys.add(key); else input.keys.delete(key);}\n\n  let game = null;\n  let last=performance.now();\n  function loop(t){\n    const dt=Math.min(0.05,(t-last)/1000); last=t;\n    try{ if(game&&game.update) game.update(dt,input); if(game&&game.render) { ctx.imageSmoothingEnabled=false; game.render(ctx);} }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }\n    requestAnimationFrame(loop);\n  }\n  requestAnimationFrame(loop);\n\n  addEventListener('message', async (ev)=>{\n    const d=ev.data||{};\n    if(d.type==='run'){\n      try{\n        const mod = await import(d.url);\n        game = mod.default || window.game || mod.game;\n        if(!game) throw new Error('game object not found: export default game');\n        if(game.init) await game.init(api);\n        parent.postMessage({type:'log',level:'info',msg:'game loaded'} , '*');\n      }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }\n    } else if(d.type==='vkey'){ setVKey(d.key, !!d.down); }\n  });\n})();\n<\/script></body></html>`;function log(msg, level='info'){ const line = [${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; } function setState(s){ stateEl.textContent = s; }
+
+function resetIframe(){ const blob = new Blob([bootSrc], {type:'text/html'}); const url = URL.createObjectURL(blob); iframe.src = url; setState('booting'); log('sandbox iframe booting...'); // Default: show all buttons until game narrows them showAllButtons(); }
+
+// Receive logs & setup from sandbox addEventListener('message', (ev)=>{ const d = ev.data || {}; if(d.type==='log') log(d.msg, d.level); if(d.type==='setButtons'){ applyButtonVisibility(Array.isArray(d.buttons)? d.buttons: []); log('buttons set: '+JSON.stringify(d.buttons||[])); } });
 
 async function runScriptFile(f){ if(!f || !f.name.endsWith('.js')){ log('拡張子 .js のファイルを選択してください','warn'); return; } resetIframe(); await new Promise(r=>setTimeout(r, 50)); const text = await f.text(); const wrapped = // ESM Module Wrapper\n${text}\nexport { game as default };; const url = URL.createObjectURL(new Blob([wrapped], {type:'text/javascript'})); iframe.contentWindow.postMessage({type:'run', url}, '*'); setState('running'); log(実行開始: ${f.name}); }
 
-// Drag & drop drop.addEventListener('click',()=>file.click()); drop.addEventListener('dragover',(e)=>{e.preventDefault(); drop.classList.add('dragover');}); drop.addEventListener('dragleave',()=>drop.classList.remove('dragover')); drop.addEventListener('drop',(e)=>{ e.preventDefault(); drop.classList.remove('dragover'); const f = e.dataTransfer.files[0]; runScriptFile(f); }); file.addEventListener('change',()=>{ const f=file.files[0]; runScriptFile(f); });
+// File picker (mobile-first) file.addEventListener('change',()=>{ const f = file.files && file.files[0]; if(!f){ if(filenameEl) filenameEl.textContent = '未選択'; return; } if(filenameEl) filenameEl.textContent = f.name; runScriptFile(f); });
 
-// Virtual Controller handlers function bindVKey(id, key){ const el = document.getElementById(id); if(!el) return; const send = (down)=>{ if(!iframe.contentWindow) return; iframe.contentWindow.postMessage({type:'vkey', key, down}, '*'); el.classList.toggle('on', !!down); }; const downEv = (e)=>{ e.preventDefault(); send(true); }; const upEv = (e)=>{ e.preventDefault(); send(false); }; ['pointerdown','touchstart','mousedown'].forEach(ev=>el.addEventListener(ev, downEv, {passive:false})); ['pointerup','pointercancel','touchend','touchcancel','mouseup','mouseleave'].forEach(ev=>el.addEventListener(ev, upEv, {passive:false})); } bindVKey('kUp', 'ArrowUp'); bindVKey('kDown', 'ArrowDown'); bindVKey('kLeft', 'ArrowLeft'); bindVKey('kRight', 'ArrowRight'); bindVKey('kA', 'z'); bindVKey('kB', 'x');
+// Virtual Controller handlers function bindVKey(id, key){ const el = document.getElementById(id); if(!el) return; const send = (down)=>{ if(!iframe.contentWindow) return; iframe.contentWindow.postMessage({type:'vkey', key, down}, '*'); el.classList.toggle('on', !!down); }; const downEv = (e)=>{ e.preventDefault(); send(true); }; const upEv = (e)=>{ e.preventDefault(); send(false); }; ['pointerdown','touchstart','mousedown'].forEach(ev=>el.addEventListener(ev, downEv, {passive:false})); ['pointerup','pointercancel','touchend','touchcancel','mouseup','mouseleave'].forEach(ev=>el.addEventListener(ev, upEv, {passive:false})); } for(const [name,id] of Object.entries(BUTTON_MAP)) bindVKey(id, KEY_MAP[name]);
 
-// Sample game (embedded) const sample = \nconst game = {\n  x: 0, y: 0, vx: 60, sprite: null, t: 0,\n  async init(api){\n    this.sprite = await api.loadImage('data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'16\\' height=\\'16\\'><rect width=\\'16\\' height=\\'16\\' fill=\\'#111'/><circle cx=\\'8\\' cy=\\'8\\' r=\\'6\\' fill=\\'#4ade80'/></svg>'))\n    api.playBeep();\n  },\n  update(dt,input){\n    this.t += dt;\n    if(input.keys.has('ArrowLeft')) this.x -= 100*dt;\n    if(input.keys.has('ArrowRight')) this.x += 100*dt;\n    if(input.keys.has('ArrowUp')) this.y -= 100*dt;\n    if(input.keys.has('ArrowDown')) this.y += 100*dt;\n  },\n  render(ctx){\n    const W=ctx.canvas.width, H=ctx.canvas.height;\n    ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);\n    if(this.sprite) ctx.drawImage(this.sprite, Math.round(this.x), Math.round(this.y));\n    ctx.fillStyle = '#9aa4af'; ctx.font = '12px ui-monospace';\n    ctx.fillText('Arrow keys or virtual D-pad', 8, 16);\n  }\n};\n;
+// Sample game (embedded) — demonstrates auto-hide const sample = \n// --- Sample Game (auto-hide buttons demo) ---\n// Only uses left/right + A + Start\nconst game = {\n  x: 0, y: 160, vx: 60, sprite: null, t: 0,\n  async init(api){\n    api.setButtons(['left','right','a','start']);\n    this.sprite = await api.loadImage('data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'16\\' height=\\'16\\'><rect width=\\'16\\' height=\\'16\\' fill=\\'#111'/><circle cx=\\'8\\' cy=\\'8\\' r=\\'6\\' fill=\\'#4ade80'/></svg>'))\n    api.playBeep();\n  },\n  update(dt,input){\n    if(input.keys.has('ArrowLeft')) this.x -= 100*dt;\n    if(input.keys.has('ArrowRight')) this.x += 100*dt;\n    if(input.keys.has('z')) this.x += Math.sin(this.t*6)*30*dt; // A: jitter dash\n    if(input.keys.has('Enter')) {/* Start pressed */}\n    this.t += dt;\n  },\n  render(ctx){\n    const W=ctx.canvas.width, H=ctx.canvas.height;\n    ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);\n    ctx.strokeStyle = '#1f2937'; for(let i=0;i<W;i+=16){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}\n    for(let j=0;j<H;j+=16){ctx.beginPath();ctx.moveTo(0,j);ctx.lineTo(W,j);ctx.stroke();}\n    if(this.sprite) ctx.drawImage(this.sprite, Math.round(this.x), Math.round(this.y));\n    ctx.fillStyle = '#9aa4af'; ctx.font = '12px ui-monospace';\n    ctx.fillText('Uses: Left/Right + A(z) + Start(Enter) — others auto-hidden', 8, 16);\n  }\n};\n;
 
 runSampleBtn.addEventListener('click', ()=>{ const blob = new Blob([sample], {type:'text/javascript'}); const fileLike = new File([blob], 'sample-game.js', {type:'text/javascript'}); runScriptFile(fileLike); });
 
 restartBtn.addEventListener('click', ()=>{ resetIframe(); setState('idle'); log('restart'); });
 
-// Controller handling function bindButton(btn,key){ btn.addEventListener('mousedown',()=>iframe.contentWindow.postMessage({type:'input',action:'down',key},'')); btn.addEventListener('mouseup',()=>iframe.contentWindow.postMessage({type:'input',action:'up',key},'')); btn.addEventListener('touchstart',(e)=>{e.preventDefault();iframe.contentWindow.postMessage({type:'input',action:'down',key},'')}); btn.addEventListener('touchend',(e)=>{e.preventDefault();iframe.contentWindow.postMessage({type:'input',action:'up',key},'')}); } bindButton(document.querySelector('.dpad .up'),'ArrowUp'); bindButton(document.querySelector('.dpad .down'),'ArrowDown'); bindButton(document.querySelector('.dpad .left'),'ArrowLeft'); bindButton(document.querySelector('.dpad .right'),'ArrowRight'); bindButton(document.querySelector('.buttons .a'),'a'); bindButton(document.querySelector('.buttons .b'),'b');
+// boot once resetIframe(); })(); </script>
 
-resetIframe(); })(); </script>
-
-</body>
+<!--
+公開手順: このファイルを index.html として GitHub Pages (Deploy from a branch: main / root) で公開。
+ゲーム側: init(api) 内で api.setButtons(['left','right','a','start']) のように使用ボタンを宣言してください。
+指定しなければデフォルトで全ボタン表示。
+--></body>
 </html>
