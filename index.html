@@ -1,294 +1,108 @@
 <!doctype html>
 <html lang="ja">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Game Player (Mobile, D-Pad 4way + A/B, No Auto-Hide)</title>
-<style>
-  :root { --gap:12px; --btn:56px; --round:64px; }
-  * { box-sizing: border-box; }
-  body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans"; margin:0; background:#0b0f12; color:#e7e9ea; }
-  header { padding:16px; border-bottom:1px solid #1f2937; background:#11161a; position:sticky; top:0; z-index:10; }
-  h1{ margin:0 0 4px; font-size:18px; }
-  .sub{ color:#9aa4af; font-size:12px; }
-  main { padding:16px; display:grid; gap:var(--gap); grid-template-columns:360px 1fr; }
-  @media (max-width:900px){ main{ grid-template-columns:1fr; } }
-  .panel{ background:#0f1418; border:1px solid #1f2937; border-radius:12px; padding:12px; }
-  .panel h2{ font-size:14px; margin:0 0 8px; color:#c7d0d9; }
-  button, input[type="file"], input[type="url"]{ appearance:none; background:#1f2937; color:#e7e9ea; border:1px solid #334155; padding:10px 12px; border-radius:12px; font-size:16px; }
-  button{ cursor:pointer; font-weight:600; }
-  button:hover{ background:#273244; }
-  input[type="file"]::-webkit-file-upload-button{ appearance:none; border:none; background:#273244; color:#e7e9ea; padding:10px 12px; border-radius:10px; font-weight:600; }
-  .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .kv{ display:grid; grid-template-columns:120px 1fr; gap:6px 8px; font-size:12px; color:#9aa4af; }
-  .log{ height:180px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px; font-family:ui-monospace,SFMono,Menlo,Consolas,"Courier New"; font-size:12px; white-space:pre-wrap; }
-  iframe{ width:100%; height:520px; background:#000; border:1px solid #1f2937; border-radius:12px; }
-  .badge{ background:#0b1220; border:1px solid #334155; padding:2px 6px; border-radius:999px; font-size:11px; color:#93c5fd; }
-  .small{ font-size:12px; color:#9aa4af; }
-  .hidden{ display:none !important; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Game Player (Vite + TS)</title>
+    <style>
+      :root { --gap: 12px; --btn:56px; --round:64px; }
+      body { margin:0; background:#0b0f12; color:#e7e9ea; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans"; }
+      header { padding:16px; border-bottom:1px solid #1f2937; background:#11161a; position:sticky; top:0; z-index:10; }
+      h1 { margin:0 0 4px; font-size:18px; }
+      .sub { color:#9aa4af; font-size:12px; }
+      main { padding:16px; display:grid; gap:12px; grid-template-columns:360px 1fr; }
+      @media (max-width:900px){ main{ grid-template-columns:1fr; } }
+      .panel { background:#0f1418; border:1px solid #1f2937; border-radius:12px; padding:12px; }
+      .panel h2 { font-size:14px; margin:0 0 8px; color:#c7d0d9; }
+      button, input[type="file"], input[type="url"]{
+        appearance:none; background:#1f2937; color:#e7e9ea; border:1px solid #334155;
+        padding:10px 12px; border-radius:12px; font-size:16px; font-weight:600; cursor:pointer;
+      }
+      button:hover { background:#273244; }
+      input[type="file"]::-webkit-file-upload-button{ appearance:none; border:none; background:#273244; color:#e7e9ea; padding:10px 12px; border-radius:10px; font-weight:600; }
+      .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+      .kv { display:grid; grid-template-columns: 120px 1fr; gap: 6px 8px; font-size:12px; color:#9aa4af; }
+      .log { height: 180px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New"; font-size:12px; white-space:pre-wrap; }
+      iframe { width: 100%; height: 520px; background:#000; border:1px solid #1f2937; border-radius:12px; }
+      .badge { background:#0b1220; border:1px solid #334155; padding:2px 6px; border-radius:999px; font-size:11px; color:#93c5fd; }
+      .small { font-size:12px; color:#9aa4af; }
+      .controller{ display:grid; grid-template-columns:1fr 1fr; grid-template-areas:"left right" "start start"; gap:12px; align-items:end; margin-top:12px; position:relative; }
+      .left{ grid-area:left; position:relative; min-height:calc(var(--btn)*3 + 40px); }
+      .right{ grid-area:right; position:relative; min-height:calc(var(--btn)*2 + 40px); display:flex; justify-content:flex-end; }
+      .startwrap{ grid-area:start; display:flex; justify-content:center; }
+      .shoulder{ position:absolute; top:0; width:72px; height:40px; border-radius:20px; font-size:14px; display:flex; align-items:center; justify-content:center; background:#1f2937; border:1px solid #334155; }
+      #kL{ left:0; } #kR{ right:0; }
+      .dpad{ position:absolute; bottom:0; left:0; display:grid; grid-template-columns:var(--btn) var(--btn) var(--btn); grid-template-rows:var(--btn) var(--btn) var(--btn); gap:6px; touch-action:none; user-select:none; }
+      .abonly{ position:absolute; bottom:0; right:0; display:flex; gap:12px; touch-action:none; user-select:none; }
+      .btn{ width:var(--btn); height:var(--btn); border-radius:12px; border:1px solid #334155; background:#141a1f; display:flex; align-items:center; justify-content:center; font-weight:700; cursor:pointer; }
+      .btn.small{ width:72px; height:40px; border-radius:20px; font-size:14px; }
+      .btn.round{ width:64px; height:64px; border-radius:999px; }
+      .btn:active, .btn.on{ background:#1f2937; }
+      .legend{ font-size:12px; color:#9aa4af; margin-bottom:6px; }
+      .startsel{ display:flex; gap:12px; margin-top:8px; align-items:center; }
+      .center{ display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Browser Game Player <span class="badge">sandboxed</span></h1>
+      <div class="sub">端末/URL/サンプルのJSを安全に実行。D-Pad 4方向＋A/B。</div>
+    </header>
 
-  /* Controller */
-  .controller{ display:grid; grid-template-columns:1fr 1fr; grid-template-areas:"left right" "start start"; gap:12px; align-items:end; margin-top:12px; position:relative; }
-  @media (max-width:560px){ .controller{ gap:8px; } }
-  .left{ grid-area:left; position:relative; min-height:calc(var(--btn)*3 + 40px); }
-  .right{ grid-area:right; position:relative; min-height:calc(var(--btn)*2 + 40px); display:flex; justify-content:flex-end; }
-  .startwrap{ grid-area:start; display:flex; justify-content:center; }
-
-  .shoulder{ position:absolute; top:0; width:72px; height:40px; border-radius:20px; font-size:14px; display:flex; align-items:center; justify-content:center; background:#1f2937; border:1px solid #334155; }
-  #kL{ left:0; } #kR{ right:0; }
-
-  /* D-Pad 4-way (3x3) */
-  .dpad{ position:absolute; bottom:0; left:0; display:grid;
-    grid-template-columns:var(--btn) var(--btn) var(--btn);
-    grid-template-rows:var(--btn) var(--btn) var(--btn);
-    gap:6px; touch-action:none; user-select:none; }
-
-  /* A/B only */
-  .abonly{ position:absolute; bottom:0; right:0; display:flex; gap:12px; touch-action:none; user-select:none; }
-
-  .btn{ width:var(--btn); height:var(--btn); border-radius:12px; border:1px solid #334155; background:#141a1f; display:flex; align-items:center; justify-content:center; font-weight:700; cursor:pointer; }
-  .btn.small{ width:72px; height:40px; border-radius:20px; font-size:14px; }
-  .btn.round{ width:64px; height:64px; border-radius:999px; }
-  .btn:active, .btn.on{ background:#1f2937; }
-  .legend{ font-size:12px; color:#9aa4af; margin-bottom:6px; }
-  .startsel{ display:flex; gap:12px; margin-top:8px; align-items:center; }
-  .center{ display:flex; flex-direction:column; align-items:center; justify-content:center; }
-</style>
-</head>
-<body>
-<header>
-  <h1>Browser Game Player <span class="badge">sandboxed</span></h1>
-  <div class="sub">端末/URL/サンプルのJSを安全に実行。D-Pad 4方向＋A/B（X/Yなし）。※自動非表示ロジックは削除済み</div>
-</header>
-
-<main>
-  <section class="panel">
-    <h2>1) スクリプトを読み込む</h2>
-
-    <!-- 端末から -->
-    <div class="row">
-      <input id="file" type="file" accept=".js" />
-      <span id="filename" class="small">未選択</span>
-      <button id="runLocal" type="button">選んだファイルを実行</button>
-    </div>
-
-    <!-- 外部URLから（CORS必須） -->
-    <div class="row">
-      <input id="url" type="url" placeholder="https://raw.githubusercontent.com/user/repo/branch/path/game.js" style="min-width:340px;" />
-      <button id="runURL" type="button">URLから実行</button>
-      <span class="small">※ GitHubは raw.githubusercontent.com を推奨</span>
-    </div>
-
-    <!-- 同フォルダのサンプル -->
-    <div class="row">
-      <button id="runSample" type="button">サンプル（sample-game.js）を実行</button>
-      <button id="restart"   type="button">再起動</button>
-      <span class="small">状態: <span id="state">idle</span></span>
-    </div>
-
-    <div class="kv" style="margin-top:12px;">
-      <div>想定エントリ:</div><div><code>export default game</code> または <code>window.game = {...}</code></div>
-      <div>必須:</div><div><code>init(api)</code>, <code>update(dt,input)</code>, <code>render(ctx)</code></div>
-      <div>提供API:</div><div><code>api.canvas / api.ctx / api.loadImage(url) / api.playBeep() / api.setButtons(list: 無視されます)</code></div>
-    </div>
-
-    <h2 style="margin-top:14px;">ログ</h2>
-    <pre id="log" class="log"></pre>
-  </section>
-
-  <section class="panel">
-    <h2>2) 実行ビュー</h2>
-    <iframe id="box" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
-
-    <div class="controller" aria-label="on-screen controller">
-      <!-- 左: L + D-Pad 4方向 -->
-      <div class="left">
-        <button id="kL" class="btn small shoulder" aria-label="L">L</button>
-        <div class="legend">D-Pad</div>
-        <div class="dpad" aria-label="D-Pad 4-way">
-          <div></div> <button id="kUp" class="btn" aria-label="Up">▲</button> <div></div>
-          <button id="kLeft" class="btn" aria-label="Left">◀</button> <div></div> <button id="kRight" class="btn" aria-label="Right">▶</button>
-          <div></div> <button id="kDown" class="btn" aria-label="Down">▼</button> <div></div>
+    <main>
+      <section class="panel">
+        <h2>1) スクリプトを読み込む</h2>
+        <div class="row">
+          <input id="file" type="file" accept=".js" />
+          <span id="filename" class="small">未選択</span>
+          <button id="runLocal" type="button">選んだファイルを実行</button>
         </div>
-      </div>
-
-      <!-- 右: R + A/Bのみ -->
-      <div class="right">
-        <button id="kR" class="btn small shoulder" aria-label="R">R</button>
-        <div class="legend" style="width:100%; text-align:right;">A / B</div>
-        <div class="abonly" aria-label="A/B buttons">
-          <button id="kA" class="btn round" aria-label="A">A</button>
-          <button id="kB" class="btn round" aria-label="B">B</button>
+        <div class="row">
+          <input id="url" type="url" placeholder="https://raw.githubusercontent.com/user/repo/branch/path/game.js" style="min-width:340px;" />
+          <button id="runURL" type="button">URLから実行</button>
+          <span class="small">※ CORS 必須</span>
         </div>
-      </div>
-
-      <!-- 下: Start / Select -->
-      <div class="startwrap center">
-        <div class="startsel">
-          <button id="kSelect" class="btn small" type="button">Select</button>
-          <button id="kStart"  class="btn small" type="button">Start</button>
+        <div class="row">
+          <button id="runSample" type="button">サンプル（sample-game.js）を実行</button>
+          <button id="restart"   type="button">再起動</button>
+          <span class="small">状態: <span id="state">idle</span></span>
         </div>
-      </div>
-    </div>
-  </section>
-</main>
+        <h2 style="margin-top:14px;">ログ</h2>
+        <pre id="log" class="log"></pre>
+      </section>
 
-<script>
-(function(){
-  const $ = (s)=>document.querySelector(s);
-  const logEl=$('#log'), stateEl=$('#state'), iframe=$('#box');
-  const fileIn=$('#file'), fileNameEl=$('#filename'), urlIn=$('#url');
+      <section class="panel">
+        <h2>2) 実行ビュー</h2>
+        <iframe id="box" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
 
-  // 存在するボタンのみマッピング
-  const BUTTON_MAP = {
-    up:'kUp', down:'kDown', left:'kLeft', right:'kRight',
-    a:'kA', b:'kB', l:'kL', r:'kR', start:'kStart', select:'kSelect'
-  };
-  const KEY_MAP = {
-    up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight',
-    a:'z', b:'x', l:'q', r:'w', start:'Enter', select:'Shift'
-  };
+        <div class="controller" aria-label="on-screen controller">
+          <div class="left">
+            <button id="kL" class="btn small shoulder" aria-label="L">L</button>
+            <div class="legend">D-Pad</div>
+            <div class="dpad">
+              <div></div> <button id="kUp" class="btn">▲</button> <div></div>
+              <button id="kLeft" class="btn">◀</button> <div></div> <button id="kRight" class="btn">▶</button>
+              <div></div> <button id="kDown" class="btn">▼</button> <div></div>
+            </div>
+          </div>
+          <div class="right">
+            <button id="kR" class="btn small shoulder" aria-label="R">R</button>
+            <div class="legend" style="width:100%; text-align:right;">A / B</div>
+            <div class="abonly">
+              <button id="kA" class="btn round">A</button>
+              <button id="kB" class="btn round">B</button>
+            </div>
+          </div>
+          <div class="startwrap center">
+            <div class="startsel">
+              <button id="kSelect" class="btn small">Select</button>
+              <button id="kStart"  class="btn small">Start</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
 
-  function log(msg, level='info'){ const line=`[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent+=line; logEl.scrollTop=logEl.scrollHeight; }
-  function setState(s){ stateEl.textContent=s; }
-
-  // 子iframeブート（</script>はエスケープ）
-  const bootSrc =
-`<!doctype html><html><head><meta charset="utf-8"><style>
-html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{display:block;margin:0 auto;background:#000}
-</style></head><body>
-<canvas id="c" width="640" height="360"></canvas>
-<script type="module">
-(function(){
-  const ctx=document.getElementById('c').getContext('2d');
-  const api={
-    canvas:document.getElementById('c'),
-    ctx,
-    loadImage:(url)=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;}),
-    playBeep:()=>{try{const A=window.AudioContext||window.webkitAudioContext; if(!A) return; const a=new A(); const o=a.createOscillator();o.type='square';o.frequency.value=440; const g=a.createGain();g.gain.value=0.05; o.connect(g).connect(a.destination); o.start(); setTimeout(()=>{o.stop(); a.close();},120);}catch(e){}},
-    // setButtons は親が無視するが、下位互換のため通知だけ送る
-    setButtons:(list)=>parent.postMessage({type:'setButtons',buttons:Array.isArray(list)?list:[]},'*')
-  };
-  const input={keys:new Set(),mouse:{x:0,y:0,down:false}};
-  onkeydown=e=>input.keys.add(e.key); onkeyup=e=>input.keys.delete(e.key);
-  onmousemove=e=>{const r=api.canvas.getBoundingClientRect(); input.mouse.x=e.clientX-r.left; input.mouse.y=e.clientY-r.top;};
-  onmousedown=()=>input.mouse.down=true; onmouseup=()=>input.mouse.down=false;
-  function setVKey(key,down){ down?input.keys.add(key):input.keys.delete(key); }
-
-  let game=null, last=performance.now();
-  function loop(t){ const dt=Math.min(0.05,(t-last)/1000); last=t;
-    try{ if(game&&game.update) game.update(dt,input); if(game&&game.render){ ctx.imageSmoothingEnabled=false; game.render(ctx);} }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }
-    requestAnimationFrame(loop);
-  } requestAnimationFrame(loop);
-
-  parent.postMessage({type:'ready'},'*');
-
-  addEventListener('message',async ev=>{
-    const d=ev.data||{};
-    if(d.type==='runCode'){ try{
-      const code=(d.code||'')+"\\n//# sourceURL=user-game.js";
-      const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
-      const mod=await import(url);
-      const g=mod.default||window.game||mod.game; if(!g) throw new Error('game object not found: export default game');
-      game=g; if(game.init) await game.init(api);
-      parent.postMessage({type:'log',level:'info',msg:'game loaded (code)'},'*');
-    }catch(e){ parent.postMessage({type:'log',level:'error',msg:'runCode failed: '+(e.message||e)},'*'); }
-    } else if(d.type==='vkey'){ setVKey(d.key, !!d.down); }
-  });
-})();
-<\/script></body></html>`;
-
-  // sandbox 生成＆ready待ち
-  let boxReady=false;
-  function resetIframe(){
-    iframe.src = URL.createObjectURL(new Blob([bootSrc],{type:'text/html'}));
-    boxReady=false; setState('booting'); log('sandbox iframe booting...');
-    // 常に全ボタン表示（自動非表示なし）
-    for(const id of Object.values(BUTTON_MAP)){ const el=document.getElementById(id); el && el.classList.remove('hidden'); }
-  }
-  addEventListener('message',(ev)=>{
-    const d=ev.data||{};
-    if(d.type==='ready'){ boxReady=true; log('sandbox ready'); }
-    else if(d.type==='log'){ log(d.msg,d.level); }
-    else if(d.type==='setButtons'){ log('setButtons ignored (auto-hide disabled)'); } // ここで無視
-  });
-  async function runCodeWhenReady(code){
-    for(let i=0;i<40 && !boxReady;i++) await new Promise(r=>setTimeout(r,50));
-    if(!boxReady){ log('子iframeがreadyになりませんでした','error'); return; }
-    iframe.contentWindow.postMessage({type:'runCode', code}, '*'); setState('running');
-  }
-
-  // ローカルファイル実行
-  async function runLocalFile(){
-    const f = fileIn.files && fileIn.files[0];
-    if(!f){ log('ファイルが選択されていません','warn'); return; }
-    if(!f.name.endsWith('.js')){ log('.js ファイルを選んでください','warn'); return; }
-    resetIframe();
-    const text = await f.text();
-    const needsExport = !/export\s+default\s+/m.test(text);
-    const wrapped = needsExport ? `${text}\nexport default game;` : text;
-    await runCodeWhenReady(wrapped);
-    log(`実行開始(ローカル): ${f.name}`);
-  }
-
-  // URLから実行（CORS前提）
-  async function runFromURL(){
-    const url = (urlIn.value||'').trim();
-    if(!url){ log('URLを入力してください','warn'); return; }
-    if(location.protocol==='https:' && url.startsWith('http:')){ log('Mixed Content: httpsページでhttpは不可です','error'); return; }
-    try{
-      resetIframe();
-      log('fetch: '+url);
-      const res = await fetch(url, { cache:'no-store', mode:'cors' });
-      if(!res.ok){ log('HTTPエラー: '+res.status+' '+res.statusText,'error'); return; }
-      const text = await res.text();
-      const needsExport = !/export\s+default\s+/m.test(text);
-      const wrapped = needsExport ? `${text}\nexport default game;` : text;
-      await runCodeWhenReady(wrapped);
-      log('実行開始(URL): '+url);
-    }catch(e){
-      log('URL読み込み失敗: '+(e.message||e)+'（CORS/URL/ネットワークを確認）','error');
-    }
-  }
-
-  // サンプル（同フォルダ）
-  async function runSample(){
-    resetIframe();
-    try{
-      const res = await fetch('sample-game.js', { cache:'no-store' });
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      const text = await res.text();
-      await runCodeWhenReady(text);
-      log('実行開始: sample-game.js');
-    }catch(e){ log('sample fetch failed: '+(e.message||e),'error'); }
-  }
-
-  // クリック（イベント委譲）
-  document.addEventListener('click', (e)=>{
-    const b = e.target.closest('button'); if(!b) return;
-    if(b.id==='runLocal'){ e.preventDefault(); runLocalFile(); }
-    else if(b.id==='runURL'){ e.preventDefault(); runFromURL(); }
-    else if(b.id==='runSample'){ e.preventDefault(); runSample(); }
-    else if(b.id==='restart'){ e.preventDefault(); resetIframe(); setState('idle'); log('restart'); }
-  }, {passive:false});
-
-  // ファイル名表示
-  fileIn.addEventListener('change', ()=>{ const f=fileIn.files&&fileIn.files[0]; fileNameEl.textContent = f? f.name : '未選択'; });
-
-  // 仮想コントローラー
-  function bindVKey(id, key){
-    const el=document.getElementById(id); if(!el) return;
-    const send=(down)=>{ if(!iframe.contentWindow) return; iframe.contentWindow.postMessage({type:'vkey', key, down}, '*'); el.classList.toggle('on', !!down); };
-    const downEv=(e)=>{ e.preventDefault(); send(true); };
-    const upEv=(e)=>{ e.preventDefault(); send(false); };
-    ['pointerdown','touchstart','mousedown'].forEach(ev=>el.addEventListener(ev,downEv,{passive:false}));
-    ['pointerup','pointercancel','touchend','touchcancel','mouseup','mouseleave'].forEach(ev=>el.addEventListener(ev,upEv,{passive:false}));
-  }
-  for(const [name,id] of Object.entries(BUTTON_MAP)){ bindVKey(id, KEY_MAP[name]); }
-
-  // 初期化
-  resetIframe();
-})();
-</script>
-</body>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>
