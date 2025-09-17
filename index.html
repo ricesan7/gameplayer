@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Game Player (Mobile-First, SFC Layout)</title>
+<title>Game Player (Mobile-First, URL/Upload)</title>
 <style>
   :root { --gap: 12px; --btn:56px; --round:64px; }
   * { box-sizing: border-box; }
@@ -15,18 +15,19 @@
   @media (max-width:900px){ main{ grid-template-columns:1fr; } }
   .panel { background:#0f1418; border:1px solid #1f2937; border-radius:12px; padding:12px; }
   .panel h2 { font-size:14px; margin:0 0 8px 0; color:#c7d0d9; }
-  button, input[type="file"] { appearance:none; background:#1f2937; color:#e7e9ea; border:1px solid #334155; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:600; font-size:16px; }
+  button, input[type="file"], input[type="url"], input[type="text"] { appearance:none; background:#1f2937; color:#e7e9ea; border:1px solid #334155; padding:10px 12px; border-radius:12px; font-size:16px; }
+  button { cursor:pointer; font-weight:600; }
   button:hover { background:#273244; }
   input[type="file"]::-webkit-file-upload-button{ appearance:none; border:none; background:#273244; color:#e7e9ea; padding:10px 12px; border-radius:10px; font-weight:600; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .kv { display:grid; grid-template-columns:120px 1fr; gap:6px 8px; font-size:12px; color:#9aa4af; }
-  .log { height:160px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px; font-family:ui-monospace,SFMono,Menlo,Consolas,"Courier New"; font-size:12px; white-space:pre-wrap; }
+  .log { height:180px; overflow:auto; background:#0a0f13; border:1px solid #1f2937; border-radius:10px; padding:8px; font-family:ui-monospace,SFMono,Menlo,Consolas,"Courier New"; font-size:12px; white-space:pre-wrap; }
   iframe { width:100%; height:520px; background:#000; border:1px solid #1f2937; border-radius:12px; }
   .badge { background:#0b1220; border:1px solid #334155; padding:2px 6px; border-radius:999px; font-size:11px; color:#93c5fd; }
   .small { font-size:12px; color:#9aa4af; }
   .hidden { display:none !important; }
 
-  /* Controller Layout (SFC風) */
+  /* Controller (SFC風) */
   .controller { display:grid; grid-template-columns:1fr 1fr; grid-template-areas:"left right" "start start"; gap:12px; align-items:end; margin-top:12px; position:relative; }
   @media (max-width:560px){ .controller{ gap:8px; } }
   .left { grid-area:left; position:relative; min-height:calc(var(--btn)*3 + 40px); }
@@ -50,27 +51,41 @@
 </head>
 <body>
 <header>
-  <h1>Browser Game Player (Mobile-First) <span class="badge">sandboxed</span></h1>
-  <div class="sub">ファイル参照でJSを安全実行。SFC風コントローラー／未使用ボタンは自動非表示。</div>
+  <h1>Browser Game Player <span class="badge">sandboxed</span></h1>
+  <div class="sub">端末からのファイル読込 or 外部URLのJSを安全に実行。SFC風コントローラー／未使用ボタンは自動非表示。</div>
 </header>
 
 <main>
   <section class="panel">
-    <h2>1) スクリプトをアップロード</h2>
+    <h2>1) スクリプトを読み込む</h2>
+
+    <!-- 1-a: 端末からアップロード -->
     <div class="row">
       <input id="file" type="file" accept=".js" />
       <span id="filename" class="small">未選択</span>
+      <button id="runLocal" type="button">選んだファイルを実行</button>
     </div>
-    <div class="row" style="margin-top:8px;">
-      <button id="runSample" type="button">サンプルを実行</button>
+
+    <!-- 1-b: 外部URLから実行 -->
+    <div class="row">
+      <input id="url" type="url" placeholder="https://.../your-game.js" style="min-width:320px;" />
+      <button id="runURL" type="button">URLから実行</button>
+      <span class="small">※ CORS が有効な .js を指定</span>
+    </div>
+
+    <!-- 1-c: 置きサンプル（同フォルダの sample-game.js） -->
+    <div class="row">
+      <button id="runSample" type="button">サンプル（sample-game.js）を実行</button>
       <button id="restart"   type="button">再起動</button>
-      <span class="small">実行状態: <span id="state">idle</span></span>
+      <span class="small">状態: <span id="state">idle</span></span>
     </div>
+
     <div class="kv" style="margin-top:12px;">
       <div>想定エントリ:</div><div><code>export default game</code> または <code>window.game = {...}</code></div>
-      <div>必須メソッド:</div><div><code>init(api)</code>, <code>update(dt, input)</code>, <code>render(ctx)</code></div>
+      <div>必須:</div><div><code>init(api)</code>, <code>update(dt, input)</code>, <code>render(ctx)</code></div>
       <div>提供API:</div><div><code>api.canvas, api.ctx, api.loadImage(url), api.playBeep(), api.setButtons(list)</code></div>
     </div>
+
     <h2 style="margin-top:14px;">ログ</h2>
     <pre id="log" class="log"></pre>
   </section>
@@ -79,31 +94,26 @@
     <h2>2) 実行ビュー</h2>
     <iframe id="box" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
 
-    <div class="controller" aria-label="SFC-like on-screen controller">
-      <!-- LEFT -->
+    <!-- SFCっぽいコントローラ -->
+    <div class="controller" aria-label="SFC-like controller">
       <div class="left">
-        <button id="kL" class="btn small shoulder" aria-label="L">L</button>
+        <button id="kL" class="btn small shoulder">L</button>
         <div class="legend">D-Pad</div>
-        <div class="dpad" aria-label="D-Pad">
-          <div></div> <button id="kUp" class="btn" aria-label="Up">▲</button> <div></div>
-          <button id="kLeft" class="btn" aria-label="Left">◀</button> <div></div> <button id="kRight" class="btn" aria-label="Right">▶</button>
-          <div></div> <button id="kDown" class="btn" aria-label="Down">▼</button> <div></div>
+        <div class="dpad">
+          <div></div> <button id="kUp" class="btn">▲</button> <div></div>
+          <button id="kLeft" class="btn">◀</button> <div></div> <button id="kRight" class="btn">▶</button>
+          <div></div> <button id="kDown" class="btn">▼</button> <div></div>
         </div>
       </div>
-
-      <!-- RIGHT -->
       <div class="right">
-        <button id="kR" class="btn small shoulder" aria-label="R">R</button>
+        <button id="kR" class="btn small shoulder">R</button>
         <div class="legend" style="width:100%; text-align:right;">ABXY</div>
-        <!-- 上X / 左Y / 右A / 下B -->
-        <div class="diamond" aria-label="ABXY diamond">
-          <div></div> <button id="kX" class="btn round" aria-label="X">X</button> <div></div>
-          <button id="kY" class="btn round" aria-label="Y">Y</button> <div></div> <button id="kA" class="btn round" aria-label="A">A</button>
-          <div></div> <button id="kB" class="btn round" aria-label="B">B</button> <div></div>
+        <div class="diamond">
+          <div></div> <button id="kX" class="btn round">X</button> <div></div>
+          <button id="kY" class="btn round">Y</button> <div></div> <button id="kA" class="btn round">A</button>
+          <div></div> <button id="kB" class="btn round">B</button> <div></div>
         </div>
       </div>
-
-      <!-- START/SELECT -->
       <div class="startwrap center">
         <div class="startsel">
           <button id="kSelect" class="btn small" type="button">Select</button>
@@ -116,131 +126,154 @@
 
 <script>
 (function(){
-  const $  = (s)=>document.querySelector(s);
-  const logEl = $('#log');
-  const stateEl = $('#state');
-  const file = $('#file');
-  const filenameEl = $('#filename');
-  const iframe = $('#box');
+  const $ = (s)=>document.querySelector(s);
+  const logEl = $('#log'), stateEl=$('#state'), iframe=$('#box');
+  const fileIn=$('#file'), fileNameEl=$('#filename'), urlIn=$('#url');
 
+  // キーマップ
   const BUTTON_MAP = { up:'kUp', down:'kDown', left:'kLeft', right:'kRight', a:'kA', b:'kB', x:'kX', y:'kY', l:'kL', r:'kR', start:'kStart', select:'kSelect' };
   const KEY_MAP    = { up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight', a:'z', b:'x', x:'s', y:'a', l:'q', r:'w', start:'Enter', select:'Shift' };
 
-  function log(msg, level='info'){ const line = `[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent += line; logEl.scrollTop = logEl.scrollHeight; }
-  function setState(s){ stateEl.textContent = s; }
+  // ログ
+  function log(msg, level='info'){ const line=`[${new Date().toLocaleTimeString()}] ${level.toUpperCase()}: ${msg}\n`; logEl.textContent+=line; logEl.scrollTop=logEl.scrollHeight; }
+  function setState(s){ stateEl.textContent=s; }
 
-  function allButtons(){ return Object.values(BUTTON_MAP).map(id=>document.getElementById(id)).filter(Boolean); }
-  function showAllButtons(){ allButtons().forEach(el=>el.classList.remove('hidden')); }
+  // 表示制御
   function applyButtonVisibility(list){
-    const allow = new Set((list||[]).map(v=>String(v).toLowerCase()));
+    const allow=new Set((list||[]).map(v=>String(v).toLowerCase()));
     for(const [name,id] of Object.entries(BUTTON_MAP)){
-      const el = document.getElementById(id);
-      if(!el) continue;
-      if(allow.size===0 || allow.has(name)) el.classList.remove('hidden'); else el.classList.add('hidden');
+      const el=document.getElementById(id); if(!el) continue;
+      el.classList.toggle('hidden', allow.size>0 && !allow.has(name));
     }
   }
+  function showAllButtons(){ for(const id of Object.values(BUTTON_MAP)){ const el=document.getElementById(id); el && el.classList.remove('hidden'); } }
 
-  // 子iframeブート（</script>は<\/script>にエスケープ済み）
+  // 子iframeブート（</script>はエスケープ）
   const bootSrc =
 `<!doctype html><html><head><meta charset="utf-8"><style>
-html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}
-#c{display:block;margin:0 auto;background:#000}
+html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}#c{display:block;margin:0 auto;background:#000}
 </style></head><body>
 <canvas id="c" width="640" height="360"></canvas>
 <script type="module">
 (function(){
-  const ctx = document.getElementById('c').getContext('2d');
-  const api = {
-    canvas: document.getElementById('c'),
+  const ctx=document.getElementById('c').getContext('2d');
+  const api={
+    canvas:document.getElementById('c'),
     ctx,
-    loadImage: (url)=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;}),
-    playBeep: ()=>{try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.type='square';o.frequency.value=440;const g=a.createGain();g.gain.value=0.05;o.connect(g).connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close();},120);}catch(e){}},
-    setButtons: (list)=>{ parent.postMessage({type:'setButtons', buttons:Array.isArray(list)?list:[]}, '*'); }
+    loadImage:(url)=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;}),
+    playBeep:()=>{try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.type='square';o.frequency.value=440;const g=a.createGain();g.gain.value=0.05;o.connect(g).connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close();},120);}catch(e){}},
+    setButtons:(list)=>parent.postMessage({type:'setButtons',buttons:Array.isArray(list)?list:[]},'*')
   };
-  const input={ keys:new Set(), mouse:{x:0,y:0,down:false} };
-  onkeydown=e=>input.keys.add(e.key);
-  onkeyup=e=>input.keys.delete(e.key);
+  const input={keys:new Set(),mouse:{x:0,y:0,down:false}};
+  onkeydown=e=>input.keys.add(e.key); onkeyup=e=>input.keys.delete(e.key);
   onmousemove=e=>{const r=api.canvas.getBoundingClientRect(); input.mouse.x=e.clientX-r.left; input.mouse.y=e.clientY-r.top;};
   onmousedown=()=>input.mouse.down=true; onmouseup=()=>input.mouse.down=false;
+  function setVKey(key,down){ down?input.keys.add(key):input.keys.delete(key); }
 
-  function setVKey(key, pressed){ if(pressed) input.keys.add(key); else input.keys.delete(key);}
-
-  let game=null;
-  let last=performance.now();
-  function loop(t){
-    const dt=Math.min(0.05,(t-last)/1000); last=t;
-    try{ if(game&&game.update) game.update(dt,input); if(game&&game.render) { ctx.imageSmoothingEnabled=false; game.render(ctx);} }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }
+  let game=null, last=performance.now();
+  function loop(t){ const dt=Math.min(0.05,(t-last)/1000); last=t;
+    try{ if(game&&game.update) game.update(dt,input); if(game&&game.render){ ctx.imageSmoothingEnabled=false; game.render(ctx);} }catch(e){ parent.postMessage({type:'log',level:'error',msg:String(e.stack||e)},'*'); }
     requestAnimationFrame(loop);
-  }
-  requestAnimationFrame(loop);
+  } requestAnimationFrame(loop);
 
-  parent.postMessage({type:'ready'}, '*');
+  parent.postMessage({type:'ready'},'*');
 
-  addEventListener('message', async (ev)=>{
+  addEventListener('message',async ev=>{
     const d=ev.data||{};
-    if(d.type==='runCode'){
-      try{
-        const code=(d.code||'')+"\\n//# sourceURL=user-game.js";
-        const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
-        const mod=await import(url);
-        const g=mod.default||window.game||mod.game;
-        if(!g) throw new Error('game object not found: export default game');
-        game=g;
-        if(game.init) await game.init(api);
-        parent.postMessage({type:'log',level:'info',msg:'game loaded (code)'},'*');
-      }catch(e){ parent.postMessage({type:'log',level:'error',msg:'runCode failed: '+String(e.message||e)},'*'); }
-    }else if(d.type==='vkey'){ setVKey(d.key, !!d.down); }
+    if(d.type==='runCode'){ try{
+      const code=(d.code||'')+"\\n//# sourceURL=user-game.js";
+      const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+      const mod=await import(url);
+      const g=mod.default||window.game||mod.game; if(!g) throw new Error('game object not found: export default game');
+      game=g; if(game.init) await game.init(api);
+      parent.postMessage({type:'log',level:'info',msg:'game loaded (code)'},'*');
+    }catch(e){ parent.postMessage({type:'log',level:'error',msg:'runCode failed: '+(e.message||e)},'*'); }
+    } else if(d.type==='vkey'){ setVKey(d.key, !!d.down); }
   });
 })();
-<\/script>
-</body></html>`;
+<\/script></body></html>`;
 
-  // iframe lifecycle
+  // sandbox 生成＆ ready 待ち
   let boxReady=false;
   function resetIframe(){
-    const blob = new Blob([bootSrc], {type:'text/html'});
-    iframe.src = URL.createObjectURL(blob);
-    boxReady=false;
-    setState('booting');
-    log('sandbox iframe booting...');
-    showAllButtons();
+    iframe.src = URL.createObjectURL(new Blob([bootSrc],{type:'text/html'}));
+    boxReady=false; setState('booting'); log('sandbox iframe booting...'); showAllButtons();
   }
-
   addEventListener('message',(ev)=>{
     const d=ev.data||{};
-    if(d.type==='ready'){ boxReady=true; log('sandbox ready'); return; }
-    if(d.type==='log') log(d.msg,d.level);
-    if(d.type==='setButtons'){ applyButtonVisibility(Array.isArray(d.buttons)?d.buttons:[]); log('buttons set: '+JSON.stringify(d.buttons||[])); }
+    if(d.type==='ready'){ boxReady=true; log('sandbox ready'); }
+    else if(d.type==='log'){ log(d.msg,d.level); }
+    else if(d.type==='setButtons'){ applyButtonVisibility(Array.isArray(d.buttons)?d.buttons:[]); log('buttons set: '+JSON.stringify(d.buttons||[])); }
   });
-
   async function runCodeWhenReady(code){
-    for(let i=0;i<40 && !boxReady;i++){ await new Promise(r=>setTimeout(r,50)); }
+    for(let i=0;i<40 && !boxReady;i++) await new Promise(r=>setTimeout(r,50));
     if(!boxReady){ log('子iframeがreadyになりませんでした','error'); return; }
-    iframe.contentWindow.postMessage({type:'runCode', code}, '*');
-    setState('running');
+    iframe.contentWindow.postMessage({type:'runCode', code}, '*'); setState('running');
   }
 
-  // ファイル選択→実行
-  async function runScriptFile(f){
-    if(!f || !f.name.endsWith('.js')){ log('拡張子 .js のファイルを選択してください','warn'); return; }
+  // ローカルファイル実行
+  async function runLocalFile(){
+    const f = fileIn.files && fileIn.files[0];
+    if(!f){ log('ファイルが選択されていません','warn'); return; }
+    if(!f.name.endsWith('.js')){ log('.js ファイルを選んでください','warn'); return; }
     resetIframe();
     const text = await f.text();
-    const needsExport = !/export\\s+default\\s+/m.test(text);
-    const wrapped = needsExport ? \`\${text}\\nexport default game;\` : text;
+    const needsExport = !/export\s+default\s+/m.test(text);
+    const wrapped = needsExport ? `${text}\nexport default game;` : text;
     await runCodeWhenReady(wrapped);
-    log(\`実行開始: \${f.name}\`);
+    log(`実行開始(ローカル): ${f.name}`);
   }
-  file.addEventListener('change',()=>{
-    const f = file.files && file.files[0];
-    if(!f){ if(filenameEl) filenameEl.textContent='未選択'; return; }
-    filenameEl.textContent = f.name;
-    runScriptFile(f);
+
+  // URLから実行（CORS必須）
+  async function runFromURL(){
+    const url = (urlIn.value||'').trim();
+    if(!url){ log('URLを入力してください','warn'); return; }
+    if(!/\.js(\?|#|$)/i.test(url)){ log('拡張子 .js のURLを指定してください','warn'); }
+    resetIframe();
+    try{
+      log('fetch: ' + url);
+      const res = await fetch(url, { cache: 'no-store', mode: 'cors' });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const text = await res.text();
+      const needsExport = !/export\s+default\s+/m.test(text);
+      const wrapped = needsExport ? `${text}\nexport default game;` : text;
+      await runCodeWhenReady(wrapped);
+      log('実行開始(URL): ' + url);
+    }catch(e){
+      log('URL読み込み失敗: ' + (e.message||e) + '（CORS/URL/ネットワークを確認）','error');
+    }
+  }
+
+  // 置きサンプル（同フォルダの sample-game.js）
+  async function runSample(){
+    resetIframe();
+    try{
+      const res = await fetch('sample-game.js', { cache: 'no-store' });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const text = await res.text();
+      await runCodeWhenReady(text);
+      log('実行開始: sample-game.js');
+    }catch(e){ log('sample fetch failed: ' + (e.message||e), 'error'); }
+  }
+
+  // クリック
+  document.addEventListener('click', (e)=>{
+    const b = e.target.closest('button'); if(!b) return;
+    if(b.id==='runLocal'){ e.preventDefault(); runLocalFile(); }
+    else if(b.id==='runURL'){ e.preventDefault(); runFromURL(); }
+    else if(b.id==='runSample'){ e.preventDefault(); runSample(); }
+    else if(b.id==='restart'){ e.preventDefault(); resetIframe(); setState('idle'); log('restart'); }
+  }, {passive:false});
+
+  // ファイル名表示
+  fileIn.addEventListener('change', ()=>{
+    const f=fileIn.files&&fileIn.files[0]; fileNameEl.textContent = f? f.name : '未選択';
   });
 
   // 仮想コントローラー
+  const KEY_MAP = { up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight', a:'z', b:'x', x:'s', y:'a', l:'q', r:'w', start:'Enter', select:'Shift' };
   function bindVKey(id, key){
-    const el = document.getElementById(id);
-    if(!el) return;
+    const el=document.getElementById(id); if(!el) return;
     const send=(down)=>{ if(!iframe.contentWindow) return; iframe.contentWindow.postMessage({type:'vkey', key, down}, '*'); el.classList.toggle('on', !!down); };
     const downEv=(e)=>{ e.preventDefault(); send(true); };
     const upEv=(e)=>{ e.preventDefault(); send(false); };
@@ -249,31 +282,7 @@ html,body{margin:0;background:#000;color:#fff;font-family:ui-monospace}
   }
   for(const [name,id] of Object.entries(BUTTON_MAP)) bindVKey(id, KEY_MAP[name]);
 
-  // --- 外部サンプル起動: sample-game.js を fetch ---
-  async function runSampleFromFile(){
-    try{
-      log('サンプル: fetch sample-game.js');
-      resetIframe();
-      // キャッシュ強制更新したい時は '?v=1' など付与
-      const res = await fetch('sample-game.js', { cache: 'no-store' });
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      const text = await res.text();
-      await runCodeWhenReady(text);
-      log('実行開始: sample-game.js');
-    }catch(err){
-      log('sample fetch failed: '+(err && err.message ? err.message : err), 'error');
-    }
-  }
-
-  // ボタンクリック（イベント委譲）
-  document.addEventListener('click', async (e)=>{
-    const t = e.target.closest('button');
-    if(!t) return;
-    if(t.id==='runSample'){ e.preventDefault(); await runSampleFromFile(); }
-    else if(t.id==='restart'){ e.preventDefault(); resetIframe(); setState('idle'); log('restart'); }
-  }, {passive:false});
-
-  // 初期化
+  // 起動
   resetIframe();
 })();
 </script>
