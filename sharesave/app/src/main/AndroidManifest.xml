@@ -1,8 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+  <uses-permission android:name="android.permission.WAKE_LOCK"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <application android:theme="@android:style/Theme.Material.Light.NoActionBar"
     android:label="ShareSave" android:usesCleartextTraffic="false"
     android:allowBackup="false" android:extractNativeLibs="true">
+    <service android:name=".DownloadService"
+      android:exported="false" android:stopWithTask="false"
+      android:foregroundServiceType="dataSync"/>
     <activity android:name=".SavedVideosActivity" android:exported="false"/>
     <activity android:name=".VideoPlayerActivity" android:exported="false"/>
     <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
