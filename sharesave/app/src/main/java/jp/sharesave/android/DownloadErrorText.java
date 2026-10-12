@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Summarize stderr without allowing initial outdated-version warnings to mask a real error. */
 final class DownloadErrorText {
     private DownloadErrorText(){}
-    private static final Pattern URL=Pattern.compile("https?://[^\\s\\]\)<>\\\"']+",Pattern.CASE_INSENSITIVE);
+    private static final Pattern URL=Pattern.compile("https?://\\\\S+",Pattern.CASE_INSENSITIVE);
     private static final Pattern COOKIE=Pattern.compile("(?im)(cookie|authorization)\\s*[:=]\\s*[^\\r\\n]+");
     static String scrub(String input){
         if(input==null)return "";
