@@ -20,6 +20,10 @@ final class DownloadFailureClassifier {
         if(exception!=null)b.append(exception).append(' ');
         if(lines!=null)for(String s:lines)if(s!=null)b.append(s).append(' ');
         String log=b.toString().toLowerCase(Locale.ROOT);
+        if(log.contains("i/o operation on closed file")){
+            return new Result("yt-dlp旧版の既知の入出力不具合",
+                "yt-dlp 2025.11.12に同じ不具合があります。アプリに同梱した修正版2026.08.19が利用されているか、エラー詳細のエンジンバージョンを確認してください。");
+        }
         if(log.contains("http error 401")||log.matches("(?s).*http 401\\b.*"))
             return new Result("HTTP 401・認証が必要",
                 "ログイン状態と閲覧権限を確認してください。アクセス権限のない動画は保存できません。");
