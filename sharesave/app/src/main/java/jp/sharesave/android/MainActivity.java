@@ -6,6 +6,8 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
@@ -27,10 +29,13 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.ScrollView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import org.json.JSONArray;
+import org.json.JSONObject;
 import com.yausername.youtubedl_android.YoutubeDL;
 import com.yausername.youtubedl_android.YoutubeDLRequest;
 import com.yausername.ffmpeg.FFmpeg;
@@ -45,6 +50,7 @@ public class MainActivity extends Activity {
     private static final long LIMIT=500L*1024*1024;
     private static final Pattern HTTPS=Pattern.compile("https://[^\\s<>\\\"']+",Pattern.CASE_INSENSITIVE);
     private final ExecutorService pool=Executors.newSingleThreadExecutor();
+    private final ExecutorService previewPool=Executors.newFixedThreadPool(3);
     private AtomicBoolean cancel=new AtomicBoolean(false);
     private volatile String processId;
     private EditText address;
@@ -96,35 +102,207 @@ public class MainActivity extends Activity {
     private String candidateLabel(StreamCandidate candidate){
         try{
             URI u=new URI(candidate.url);
-            return candidate.kind+" / "+u.getHost()+" / "+Integer.toHexString(candidate.url.hashCode());
+            String host=u.getHost();
+            return candidate.kind+"  •  "+(host==null?"不明":host);
         }catch(Exception e){return candidate.kind;}
     }
+    // Extract metadata only from the displayed page, without intercepting video bytes.
+    private static final String PAGE_PREVIEW_SCRIPT =
+        "(function(){"+
+        "var out=[],vids=document.querySelectorAll('video');"+
+        "for(var i=0;i<Math.min(vids.length,20);i++){"+
+        "var v=vids[i],srcs=[],poster=v.poster||'',title=v.getAttribute('title')||v.getAttribute('aria-label')||'';"+
+        "if(v.currentSrc)srcs.push(v.currentSrc);if(v.src)srcs.push(v.src);"+
+        "var parts=v.querySelectorAll('source');for(var j=0;j<parts.length;j++){if(parts[j].src)srcs.push(parts[j].src);}"+
+        "out.push({urls:srcs,poster:poster,title:title,duration:(isFinite(v.duration)&&v.duration>0?v.duration:0)});"+
+        "}"+
+        "var meta=document.querySelector('meta[property=\\\"og:image\\\"],meta[name=\\\"twitter:image\\\"]');"+
+        "var pic=meta?meta.content:'';try{if(pic)pic=new URL(pic,document.baseURI).href;}catch(e){pic='';}"+
+        "return {videos:out,pagePoster:pic,title:(document.title||'').slice(0,120)};"+
+        "})()";
+
     private void selectStreamToSave(){
-        // A video element may expose the stream even if WebView's request hook missed it.
-        web.evaluateJavascript("(function(){var out=[];try{document.querySelectorAll('video,source').forEach(function(v){if(v.currentSrc)out.push(v.currentSrc);if(v.src)out.push(v.src)});}catch(e){}return out.slice(0,25);})()", result->{
+        web.evaluateJavascript(PAGE_PREVIEW_SCRIPT,result->{
+            final ArrayList<JSONObject> videoInfo=new ArrayList<>();
+            String pageTitle="";
+            String fallbackPoster="";
             try{
-                JSONArray urls=new JSONArray(result);
-                for(int i=0;i<urls.length();i++)observeMediaRequest(urls.optString(i,""));
+                JSONObject info=new JSONObject(result);
+                pageTitle=info.optString("title","");
+                fallbackPoster=info.optString("pagePoster","");
+                JSONArray videos=info.optJSONArray("videos");
+                if(videos!=null){
+                    for(int i=0;i<videos.length();i++){
+                        JSONObject item=videos.optJSONObject(i);
+                        if(item==null)continue;
+                        videoInfo.add(item);
+                        JSONArray urls=item.optJSONArray("urls");
+                        if(urls!=null)for(int j=0;j<urls.length();j++)
+                            observeMediaRequest(urls.optString(j,""));
+                    }
+                }
             }catch(Exception ignored){}
             final ArrayList<StreamCandidate> candidates;
             synchronized(streamsMutex){candidates=new ArrayList<>(detectedStreams.values());}
             if(candidates.isEmpty()){
                 new AlertDialog.Builder(this).setTitle("配信URLが見つかりません")
-                    .setMessage("動画を一度再生してから再度お試しください。見つからない場合は「動画を保存」でページURLからの取得を試せます。DRM保護動画やblob:配信などは対応できません。")
+                    .setMessage("動画を一度再生してからお試しください。取得できない場合は「動画を保存」でページURLからの取得も試せます。")
                     .setPositiveButton("OK",null).show();
                 return;
             }
-            String[] labels=new String[candidates.size()];
-            for(int i=0;i<candidates.size();i++)labels[i]=candidateLabel(candidates.get(i));
-            new AlertDialog.Builder(this)
-                .setTitle("保存する配信を選択")
-                .setItems(labels,(dialog,index)->{
-                    String page=web.getUrl();
-                    saveLinkWithContext(candidates.get(index).url,allowed(page)?page:null);
-                })
-                .setNegativeButton("キャンセル",null)
-                .show();
+            renderStreamChoices(candidates,videoInfo,pageTitle,fallbackPoster);
         });
+    }
+
+    private void renderStreamChoices(ArrayList<StreamCandidate> candidates,
+                                     ArrayList<JSONObject> videos,String pageTitle,String fallbackPoster){
+        final String page=web.getUrl();
+        final String userAgent=web.getSettings().getUserAgentString();
+        ScrollView scroller=new ScrollView(this);
+        LinearLayout list=new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(12),dp(8),dp(12),dp(10));
+        scroller.addView(list);
+        TextView note=new TextView(this);
+        note.setText("画像・配信形式・容量を比較して選択できます。HLS/DASHの容量は概算の場合があります。");
+        note.setTextSize(12);note.setTextColor(Color.DKGRAY);
+        list.addView(note,lp(-1,-2));
+
+        AlertDialog dialog=new AlertDialog.Builder(this)
+            .setTitle("保存する動画を選択")
+            .setView(scroller)
+            .setNegativeButton("閉じる",null)
+            .create();
+
+        for(int index=0;index<candidates.size();index++){
+            StreamCandidate c=candidates.get(index);
+            String poster=fallbackPoster;
+            String title=pageTitle;
+            double duration=0;
+            boolean videoMatched=false;
+            for(JSONObject video:videos){
+                JSONArray arr=video.optJSONArray("urls");
+                boolean matched=false;
+                if(arr!=null)for(int k=0;k<arr.length();k++)
+                    if(c.url.equals(arr.optString(k,"")))matched=true;
+                if(matched){
+                    videoMatched=true;
+                    String candidateTitle=video.optString("title","");
+                    if(!candidateTitle.isEmpty())title=candidateTitle;
+                    String specificPoster=video.optString("poster","");
+                    if(allowed(specificPoster))poster=specificPoster;
+                    duration=video.optDouble("duration",0);
+                    break;
+                }
+            }
+            final String imageUrl=allowed(poster)?poster:null;
+            final String safePage=allowed(page)?page:null;
+            final double seconds=duration;
+            final String friendlyTitle=title.isEmpty()?"動画候補 "+(index+1):title;
+            LinearLayout row=new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(5),dp(12),dp(5),dp(12));
+
+            ImageView thumbnail=new ImageView(this);
+            thumbnail.setBackgroundColor(Color.rgb(229,233,238));
+            thumbnail.setImageResource(android.R.drawable.ic_media_play);
+            thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            row.addView(thumbnail,lp(118,74));
+
+            LinearLayout detail=new LinearLayout(this);
+            detail.setPadding(dp(12),0,0,0);
+            detail.setOrientation(LinearLayout.VERTICAL);
+            TextView name=new TextView(this);
+            name.setText(friendlyTitle);
+            name.setTextSize(14);
+            name.setTextColor(Color.BLACK);
+            name.setMaxLines(2);
+            detail.addView(name,lp(-1,-2));
+
+            TextView kind=new TextView(this);
+            kind.setText(candidateLabel(c));
+            kind.setTextSize(11);
+            kind.setTextColor(Color.DKGRAY);
+            detail.addView(kind,lp(-1,-2));
+
+            TextView size=new TextView(this);
+            size.setText("容量を確認中...");
+            size.setTextSize(12);
+            size.setTextColor(blue);
+            detail.addView(size,lp(-1,-2));
+            row.addView(detail,new LinearLayout.LayoutParams(0,-2,1));
+
+            row.setClickable(true);
+            row.setBackgroundResource(android.R.drawable.list_selector_background);
+            row.setOnClickListener(v->{
+                dialog.dismiss();
+                saveLinkWithContext(c.url,safePage);
+            });
+            list.addView(row,lp(-1,-2));
+            View divider=new View(this);
+            divider.setBackgroundColor(Color.rgb(222,226,230));
+            list.addView(divider,lp(-1,1));
+
+            final String caption=videoMatched?"動画サムネイル":"ページ代表画像（動画との一致未確認）";
+            previewPool.submit(()->{
+                StreamDetails.SizeInfo detailInfo=StreamDetails.inspect(c.url,c.kind,safePage,userAgent,seconds);
+                Bitmap bitmap=loadThumbnail(imageUrl,safePage,userAgent);
+                runOnUiThread(()->{
+                    if(!dialog.isShowing()||isFinishing()||isDestroyed())return;
+                    size.setText(detailInfo.label());
+                    if(bitmap!=null){
+                        thumbnail.setImageBitmap(bitmap);
+                        thumbnail.setContentDescription(caption);
+                    }else{
+                        thumbnail.setContentDescription("サムネイル未取得");
+                    }
+                });
+            });
+        }
+        dialog.show();
+    }
+    private Bitmap loadThumbnail(String raw,String referer,String agent){
+        if(!StreamDetails.safe(raw))return null;
+        try{
+            URL url=new URL(raw);
+            for(int redirect=0;redirect<4;redirect++){
+                if(!StreamDetails.safe(url.toString()))return null;
+                HttpURLConnection c=(HttpURLConnection)url.openConnection();
+                c.setInstanceFollowRedirects(false);
+                c.setConnectTimeout(4500);c.setReadTimeout(4500);
+                if(agent!=null)c.setRequestProperty("User-Agent",agent);
+                if(StreamDetails.safe(referer))c.setRequestProperty("Referer",referer);
+                try{
+                    int code=c.getResponseCode();
+                    if(code>=300&&code<400){
+                        String next=c.getHeaderField("Location");
+                        if(next==null)return null;
+                        url=new URL(url,next);continue;
+                    }
+                    if(code!=200||c.getContentLengthLong()>1024*1024)return null;
+                    String type=c.getContentType();
+                    if(type==null||!type.toLowerCase(Locale.ROOT).startsWith("image/"))return null;
+                    try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                        byte[] buf=new byte[8192];int n,total=0;
+                        while((n=in.read(buf))!=-1){
+                            total+=n;if(total>1024*1024)return null;
+                            out.write(buf,0,n);
+                        }
+                        byte[] image=out.toByteArray();
+                        BitmapFactory.Options opts=new BitmapFactory.Options();
+                        opts.inJustDecodeBounds=true;
+                        BitmapFactory.decodeByteArray(image,0,image.length,opts);
+                        opts.inSampleSize=1;
+                        while(opts.outWidth/opts.inSampleSize>500||opts.outHeight/opts.inSampleSize>500)
+                            opts.inSampleSize*=2;
+                        opts.inJustDecodeBounds=false;
+                        return BitmapFactory.decodeByteArray(image,0,image.length,opts);
+                    }
+                }finally{c.disconnect();}
+            }
+        }catch(Exception ignored){}
+        return null;
     }
     private boolean samePage(String a,String b) {
         if(a==null||b==null)return false;
@@ -272,6 +450,7 @@ public class MainActivity extends Activity {
         cancel.set(true);
         try {if(processId!=null)YoutubeDL.getInstance().destroyProcessById(processId);}catch(Exception ignored){}
         pool.shutdownNow();
+        previewPool.shutdownNow();
         web.stopLoading();
         web.destroy();
         super.onDestroy();
