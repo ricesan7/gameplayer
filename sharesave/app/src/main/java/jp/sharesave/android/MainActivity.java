@@ -49,6 +49,14 @@ public class MainActivity extends Activity {
     private Button stop;
     private int blue=Color.rgb(45,92,217);
     private boolean initialized=false;
+    // Lock the currently displayed video page to defeat unsolicited redirects.
+    private boolean pageLockEnabled=true;
+    private String pinnedPageUrl=null;
+    private Button pageLockButton;
+    private boolean samePage(String a,String b) {
+        if(a==null||b==null)return false;
+        return a.split("#",2)[0].equals(b.split("#",2)[0]);
+    }
 
     private int dp(int n) { return Math.round(n*getResources().getDisplayMetrics().density); }
     private LinearLayout.LayoutParams lp(int width,int height) {
@@ -88,6 +96,14 @@ public class MainActivity extends Activity {
         toolbar.addView(open,new LinearLayout.LayoutParams(0,dp(52),1));
         toolbar.addView(save,new LinearLayout.LayoutParams(0,dp(52),1));
         root.addView(toolbar,lp(-1,56));
+        pageLockButton=button("🔒 ページ固定: ON");
+        pageLockButton.setOnClickListener(v->{
+            pageLockEnabled=!pageLockEnabled;
+            pinnedPageUrl=pageLockEnabled&&web!=null&&allowed(web.getUrl())?web.getUrl():null;
+            pageLockButton.setText(pageLockEnabled?"🔒 ページ固定: ON":"🔓 ページ固定: OFF");
+            display(pageLockEnabled?"ページ移動をブロックします。":"ページ固定を解除しました。");
+        });
+        root.addView(pageLockButton,lp(-1,46));
         status=new TextView(this);
         status.setText("SNSの共有メニューからも起動できます。");
         status.setTextColor(Color.DKGRAY);
@@ -116,21 +132,36 @@ public class MainActivity extends Activity {
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setMediaPlaybackRequiresUserGesture(true);
         s.setJavaScriptCanOpenWindowsAutomatically(false);
-        s.setSupportMultipleWindows(false);
+        // true + reject onCreateWindow prevents target=_blank from replacing this page.
+        s.setSupportMultipleWindows(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView w,WebResourceRequest r) {
                 if(!r.isForMainFrame()) return false;
-                if(!allowed(r.getUrl().toString())) {
+                String next=r.getUrl().toString();
+                if(!allowed(next)) {
                     display("HTTPSの公開ページ以外は開けません。"); return true;
+                }
+                if(pageLockEnabled&&pinnedPageUrl!=null&&!samePage(pinnedPageUrl,next)) {
+                    display("ページ固定中：広告などのページ移動をブロックしました。");
+                    return true;
                 }
                 return false;
             }
             @Override public void onPageFinished(WebView w,String url) {
-                if(allowed(url)) address.setText(url);
+                if(allowed(url)) {
+                    address.setText(url);
+                    if(pageLockEnabled&&pinnedPageUrl==null)pinnedPageUrl=url;
+                }
             }
         });
-        web.setWebChromeClient(new WebChromeClient());
+        web.setWebChromeClient(new WebChromeClient(){
+            @Override public boolean onCreateWindow(WebView view,boolean isDialog,
+                                                      boolean isUserGesture,android.os.Message resultMsg){
+                display("広告などの別ウィンドウをブロックしました。");
+                return false;
+            }
+        });
         web.setDownloadListener((url,ua,disposition,mime,size)->{
             if(allowed(url)&&(directMedia(url)||mime!=null&&(mime.startsWith("video/")||mime.startsWith("image/"))))
                 saveLink(url);
@@ -145,7 +176,8 @@ public class MainActivity extends Activity {
         receive(intent);
     }
     @Override public void onBackPressed() {
-        if(web.canGoBack())web.goBack();else super.onBackPressed();
+        if(web.canGoBack()){pinnedPageUrl=null;web.goBack();}
+        else super.onBackPressed();
     }
     @Override protected void onDestroy() {
         cancel.set(true);
@@ -168,6 +200,8 @@ public class MainActivity extends Activity {
     private void openUrl(String raw) {
         String url=urlIn(raw);
         if(!allowed(url)){display("公開HTTPSのURLを入力してください。");return;}
+        // Manual URL entry is trusted; pin once this page has loaded.
+        pinnedPageUrl=null;
         address.setText(url);web.loadUrl(url);
         display("ページ表示と動画ファイルの保存は別の処理です。");
     }
