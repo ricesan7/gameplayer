@@ -2,6 +2,8 @@ package jp.sharesave.android;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipboardManager;
+import android.content.ClipData;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.res.ColorStateList;
@@ -444,7 +446,9 @@ public class MainActivity extends Activity {
         status.setTextColor(Color.DKGRAY);
         status.setTextSize(12);
         status.setGravity(Gravity.CENTER);
-        root.addView(status,lp(-1,40));
+        status.setMaxLines(3);
+        status.setTextIsSelectable(true);
+        root.addView(status,lp(-1,58));
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
         progress.setVisibility(View.GONE);
@@ -456,6 +460,42 @@ public class MainActivity extends Activity {
             display("ダウンロードの中止を要求しました。");
         });
         root.addView(stop,lp(-1,43));
+        LinearLayout diagnostics=new LinearLayout(this);
+        diagnostics.setOrientation(LinearLayout.HORIZONTAL);
+        Button showError=button("エラー詳細・コピー");
+        showError.setOnClickListener(v->{
+            SharedPreferences p=DownloadService.state(this);
+            String summary=p.getString("error_summary","");
+            String details=p.getString("error_detail","");
+            if(details.isEmpty())details="詳細ログはまだありません。再度ダウンロードを試してください。";
+            final String copyText="ShareSaveのエラー\n"+summary+"\n"+details;
+            TextView content=new TextView(this);
+            content.setText(copyText);
+            content.setTextSize(12);
+            content.setTextIsSelectable(true);
+            int pad=dp(16);content.setPadding(pad,pad,pad,pad);
+            ScrollView scroller=new ScrollView(this);
+            scroller.addView(content);
+            new AlertDialog.Builder(this)
+                .setTitle("ダウンロードのエラー詳細")
+                .setView(scroller)
+                .setPositiveButton("コピー",(d,which)->{
+                    ClipboardManager clip=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+                    clip.setPrimaryClip(ClipData.newPlainText("ShareSave diagnostics",copyText));
+                    display("エラー詳細をコピーしました。");
+                }).setNegativeButton("閉じる",null).show();
+        });
+        diagnostics.addView(showError,new LinearLayout.LayoutParams(0,dp(46),1));
+        Button updateEngine=button("yt-dlp更新");
+        updateEngine.setOnClickListener(v->{
+            try{
+                startForegroundService(new Intent(this,DownloadService.class)
+                    .setAction(DownloadService.ACTION_UPDATE));
+                display("動画取得エンジンの更新を確認しています…");
+            }catch(Exception e){display("更新開始に失敗: "+e.getMessage());}
+        });
+        diagnostics.addView(updateEngine,new LinearLayout.LayoutParams(0,dp(46),1));
+        root.addView(diagnostics,lp(-1,50));
         web=new WebView(this);
         WebSettings s=web.getSettings();
         s.setJavaScriptEnabled(true);
