@@ -50,6 +50,17 @@ public final class DownloadService extends Service {
     private volatile long lastEngineActivity=0;
     private volatile long lastOutputPersist=0;
     private volatile boolean monitorEngine=false;
+    private volatile File monitoredOutputDir;
+    private volatile long lastObservedBytes=0;
+    private long outputBytes(File dir){
+        if(dir==null||!dir.isDirectory())return 0;
+        long total=0;
+        File[] files=dir.listFiles();
+        if(files!=null)for(File f:files)
+            if(f.isFile()&&!f.getName().equals("browser-session-cookies.txt"))
+                total+=Math.max(0,f.length());
+        return total;
+    }
     private volatile boolean timeoutWarningShown=false;
     private volatile String downloadStep="待機中";
     private void stage(String message){
@@ -71,22 +82,29 @@ public final class DownloadService extends Service {
     private void beginWatchdog(){
         timedOut.set(false);
         timeoutWarningShown=false;
+        lastObservedBytes=outputBytes(monitoredOutputDir);
         lastEngineActivity=android.os.SystemClock.elapsedRealtime();
         monitorEngine=true;
     }
     private void watchdogCheck(){
         if(!monitorEngine||!busy.get())return;
+        long size=outputBytes(monitoredOutputDir);
+        if(size>lastObservedBytes){
+            lastObservedBytes=size;
+            lastEngineActivity=android.os.SystemClock.elapsedRealtime();
+            timeoutWarningShown=false;
+        }
         long idle=android.os.SystemClock.elapsedRealtime()-lastEngineActivity;
-        if(idle>=90000 && !timeoutWarningShown){
+        if(idle>=45000 && !timeoutWarningShown){
             timeoutWarningShown=true;
             state(this).edit().putString("debug_warning",
-                "動画取得エンジンから90秒以上応答がありません").apply();
+                "取得エンジンの出力とファイル増加が45秒間止まっています").apply();
             publish("応答を待機中（通知から中止できます）",-1,true);
         }
-        if(idle>=240000 && timedOut.compareAndSet(false,true)){
+        if(idle>=120000 && timedOut.compareAndSet(false,true)){
             monitorEngine=false;
             state(this).edit().putString("debug_warning",
-                "動画取得エンジンが240秒以上応答せず処理を中断しました").apply();
+                "120秒間進捗がなかったため接続処理を終了しました").apply();
             String id=processId;
             if(id!=null)try{YoutubeDL.getInstance().destroyProcessById(id);}catch(Exception ignored){}
             publish("動画取得が応答しないため処理を中断しています",-1,true);
@@ -164,7 +182,7 @@ public final class DownloadService extends Service {
         synchronized(engineLog){engineLog.clear();}
         state(this).edit().remove("error_detail").remove("error_summary")
             .remove("error_type").remove("recovery_hint")
-            .remove("debug_last_line").remove("debug_warning")
+            .remove("debug_last_line").remove("debug_warning").remove("preflight_result")
             .putLong("debug_started_at",System.currentTimeMillis())
             .putString("debug_stage","ダウンロード準備中").apply();
         running=true;
@@ -247,7 +265,7 @@ public final class DownloadService extends Service {
                 "yt-dlpの更新確認が完了しました":"ダウンロードが完了しました",false);
         }catch(Exception e){
             if(timedOut.get())e=new IOException(
-                "動画取得処理が4分以上応答しませんでした。配信URLの有効期限や通信状態をご確認ください。",e);
+                "動画取得エンジンの出力やファイル増加が120秒間止まったため中断しました。",e);
             ArrayList<String> logged=getLogSnapshot();
             String summary=DownloadErrorText.select(e.getMessage(),logged);
             String detail=DownloadErrorText.details(e.getMessage(),logged);
@@ -263,6 +281,7 @@ public final class DownloadService extends Service {
                 "保存失敗: "+classified.category+"。"+classified.guidance,cancel.get());
         }finally{
             monitorEngine=false;
+            monitoredOutputDir=null;
             String id=processId;processId=null;
             if(wakeLock!=null&&wakeLock.isHeld())wakeLock.release();
             busy.set(false);
@@ -360,6 +379,19 @@ public final class DownloadService extends Service {
     }
     private void downloadPost(String link,AtomicBoolean stopFlag,String referer,String userAgent,
                               String origin,String mediaCookies,String refererCookies) throws Exception {
+        if(StreamPreflight.isManifest(link)){
+            stage("HLS/DASH配信先のHTTP接続を確認しています…");
+            try{
+                StreamPreflight.Result check=StreamPreflight.check(
+                    link,referer,userAgent,origin,mediaCookies);
+                state(this).edit().putString("preflight_result",check.message).apply();
+                rememberLog("Preflight: "+check.message);
+            }catch(IOException probeError){
+                String safe=DownloadErrorText.scrub(probeError.getMessage());
+                state(this).edit().putString("preflight_result","接続失敗: "+safe).apply();
+                throw new IOException("配信URLへの接続確認に失敗: "+safe,probeError);
+            }
+        }else state(this).edit().putString("preflight_result","動画ページURL（HLS事前検査対象外）").apply();
         if(!initialized){
             synchronized(this){
                 if(!initialized){
@@ -379,6 +411,7 @@ public final class DownloadService extends Service {
         stage("動画の配信URLを解析しています…");
         File temp=new File(getCacheDir(),"extract-"+UUID.randomUUID());
         if(!temp.mkdirs())throw new IOException("作業領域を作成できません。");
+        monitoredOutputDir=temp;
         processId="sharesave-"+UUID.randomUUID();
         try {
             File jar=new File(temp,"browser-session-cookies.txt");
@@ -390,7 +423,7 @@ public final class DownloadService extends Service {
             req.addOption("--no-playlist");
             req.addOption("--no-write-thumbnail");
             req.addOption("--no-write-info-json");
-            req.addOption("--socket-timeout",20);
+            req.addOption("--socket-timeout",12);
             // Compressed manifests triggered yt-dlp's 2025.11.12 urllib bug.
             // Request uncompressed HTTP bodies even when a different core is installed.
             req.addOption("--add-header","Accept-Encoding: identity");
@@ -412,7 +445,9 @@ public final class DownloadService extends Service {
             beginWatchdog();
             stage("動画取得エンジンを実行しています…");
             try{
-                YoutubeDL.getInstance().execute(req,processId,(percent,eta,line)->{
+                // Merge stderr and stdout: otherwise urllib/network errors are only
+                // returned after completion, leaving the live screen at Extracting URL.
+                YoutubeDL.getInstance().execute(req,processId,true,(percent,eta,line)->{
                     rememberOutput(line);
                     if(!stopFlag.get()&&!timedOut.get()){
                         int current=Math.max(0,Math.min(100,Math.round(percent)));
@@ -438,6 +473,7 @@ public final class DownloadService extends Service {
             }
         }finally {
             processId=null;
+            monitoredOutputDir=null;
             File[] files=temp.listFiles();
             if(files!=null)for(File f:files)f.delete();
             temp.delete();
