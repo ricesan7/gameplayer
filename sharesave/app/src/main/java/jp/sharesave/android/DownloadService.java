@@ -89,7 +89,7 @@ public final class DownloadService extends Service {
     private void watchdogCheck(){
         if(!monitorEngine||!busy.get())return;
         long size=outputBytes(monitoredOutputDir);
-        if(size>lastObservedBytes){
+        if(size!=lastObservedBytes){
             lastObservedBytes=size;
             lastEngineActivity=android.os.SystemClock.elapsedRealtime();
             timeoutWarningShown=false;
