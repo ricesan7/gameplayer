@@ -38,6 +38,8 @@ public final class DownloadService extends Service {
     private static final long LIMIT=4L*1024*1024*1024;
     private final ExecutorService executor=Executors.newSingleThreadExecutor();
     private final AtomicBoolean busy=new AtomicBoolean(false);
+    private static volatile boolean running=false;
+    public static boolean isRunning(){return running;}
     private final AtomicBoolean cancel=new AtomicBoolean(false);
     private volatile String processId;
     private volatile boolean initialized;
@@ -77,6 +79,7 @@ public final class DownloadService extends Service {
             return START_NOT_STICKY;
         }
         cancel.set(false);
+        running=true;
         String label="ダウンロード準備中";
         publish(label,-1,true);
         try{
@@ -86,6 +89,7 @@ public final class DownloadService extends Service {
             else startForeground(NOTIFICATION_ID,notification(label,-1,true));
         }catch(Exception e){
             busy.set(false);
+            running=false;
             state(this).edit().putBoolean("active",false).putString("message","バックグラウンドサービスを開始できません: "+e.getMessage()).apply();
             stopSelf();
             return START_NOT_STICKY;
@@ -150,6 +154,7 @@ public final class DownloadService extends Service {
             String id=processId;processId=null;
             if(wakeLock!=null&&wakeLock.isHeld())wakeLock.release();
             busy.set(false);
+            running=false;
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
         }
@@ -177,6 +182,9 @@ public final class DownloadService extends Service {
         stopSelf();
     }
     @Override public void onDestroy(){
+        running=false;
+        // Prevent stale UI state if Android stops the service.
+        state(this).edit().putBoolean("active",false).apply();
         cancel.set(true);
         String id=processId;
         if(id!=null)try{YoutubeDL.getInstance().destroyProcessById(id);}catch(Exception ignored){}
