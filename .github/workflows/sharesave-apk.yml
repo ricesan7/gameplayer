@@ -36,5 +36,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: ShareSave-v0.9.5-http-probe-and-live-errors-apk
+          name: ShareSave-v0.9.6-video-surface-fix-apk
           path: sharesave/app/build/outputs/apk/debug/app-debug.apk
