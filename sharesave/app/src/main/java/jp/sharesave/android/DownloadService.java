@@ -211,7 +211,7 @@ public final class DownloadService extends Service {
     private void downloadDirect(String link,AtomicBoolean stopFlag) throws Exception {
         URL url=new URL(link);
         for(int i=0;i<5;i++) {
-            if(!allowed(url.toString()))throw new IOException("安全なURLではありません。");
+            if(!StreamDetails.safe(url.toString()))throw new IOException("安全なURLではありません。");
             HttpURLConnection c=(HttpURLConnection)url.openConnection();
             c.setInstanceFollowRedirects(false);
             c.setConnectTimeout(15000);c.setReadTimeout(30000);
