@@ -50,8 +50,9 @@ public class MainActivity extends Activity {
     private int blue=Color.rgb(45,92,217);
     private boolean initialized=false;
 
+    private int dp(int n) { return Math.round(n*getResources().getDisplayMetrics().density); }
     private LinearLayout.LayoutParams lp(int width,int height) {
-        return new LinearLayout.LayoutParams(width,height);
+        return new LinearLayout.LayoutParams(width,height>0?dp(height):height);
     }
     private Button button(String label) {
         Button b=new Button(this);
@@ -64,7 +65,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(12,18,12,10);
+        root.setPadding(dp(12),dp(18),dp(12),dp(10));
         root.setBackgroundColor(Color.rgb(249,249,251));
         TextView title=new TextView(this);
         title.setText("ShareSave  動画・画像を保存");
@@ -84,8 +85,8 @@ public class MainActivity extends Activity {
         Button save=button("動画を保存");
         open.setOnClickListener(v->openUrl(address.getText().toString()));
         save.setOnClickListener(v->saveLink(currentUrl()));
-        toolbar.addView(open,new LinearLayout.LayoutParams(0,52,1));
-        toolbar.addView(save,new LinearLayout.LayoutParams(0,52,1));
+        toolbar.addView(open,new LinearLayout.LayoutParams(0,dp(52),1));
+        toolbar.addView(save,new LinearLayout.LayoutParams(0,dp(52),1));
         root.addView(toolbar,lp(-1,56));
         status=new TextView(this);
         status.setText("SNSの共有メニューからも起動できます。");
