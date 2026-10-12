@@ -390,7 +390,12 @@ public class MainActivity extends Activity {
         Button open=button("ページを開く");
         Button save=button("動画を保存");
         open.setOnClickListener(v->openUrl(address.getText().toString()));
-        save.setOnClickListener(v->saveLink(currentUrl()));
+        save.setOnClickListener(v->{
+            boolean found;
+            synchronized(streamsMutex){found=!detectedStreams.isEmpty();}
+            if(found)selectStreamToSave();
+            else saveLink(currentUrl());
+        });
         toolbar.addView(open,new LinearLayout.LayoutParams(0,dp(52),1));
         toolbar.addView(save,new LinearLayout.LayoutParams(0,dp(52),1));
         root.addView(toolbar,lp(-1,56));
