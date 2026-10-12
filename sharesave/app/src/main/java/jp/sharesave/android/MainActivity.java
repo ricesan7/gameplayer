@@ -525,6 +525,7 @@ public class MainActivity extends Activity {
             String recovery=p.getString("recovery_hint","");
             String details=p.getString("error_detail","");
             String phase=p.getString("debug_stage","未記録");
+            String core=p.getString("engine_core_version","未確認");
             String lastLine=p.getString("debug_last_line","まだ出力がありません");
             String warning=p.getString("debug_warning","");
             long started=p.getLong("debug_started_at",0);
@@ -533,6 +534,7 @@ public class MainActivity extends Activity {
             final String copyText="ShareSaveの診断情報\n"+
                 "経過時間: "+seconds+" 秒\n"+
                 "段階: "+phase+"\n"+
+                "yt-dlp本体: "+core+"\n"+
                 "最終出力: "+lastLine+"\n"+
                 (warning.isEmpty()?"":"警告: "+warning+"\n")+
                 "エラー概要: "+summary+"\n"+
