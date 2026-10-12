@@ -94,6 +94,7 @@ public class MainActivity extends Activity {
     private String pinnedPageUrl=null;
     private Button pageLockButton;
     private Button streamButton;
+    private Button freshButton;
     private final Object streamsMutex=new Object();
     private final LinkedHashMap<String,StreamCandidate> detectedStreams=new LinkedHashMap<>();
     private static final int MAX_CANDIDATES=15;
@@ -102,8 +103,10 @@ public class MainActivity extends Activity {
         final String kind;
         final String referer;
         final String origin;
+        final long foundAtMs;
         StreamCandidate(String url,String kind,String referer,String origin){
             this.url=url;this.kind=kind;this.referer=referer;this.origin=origin;
+            foundAtMs=android.os.SystemClock.elapsedRealtime();
         }
     }
     private static String requestHeader(Map<String,String> headers,String key){
@@ -458,6 +461,9 @@ public class MainActivity extends Activity {
         streamButton=button("📺 再生中の配信を保存 (0)");
         streamButton.setOnClickListener(v->selectStreamToSave());
         root.addView(streamButton,lp(-1,48));
+        freshButton=button("🔄 配信候補を更新・再検出");
+        freshButton.setOnClickListener(v->reloadAndFindLatestStreams());
+        root.addView(freshButton,lp(-1,46));
         status=new TextView(this);
         status.setText("SNSの共有メニューからも起動できます。");
         status.setTextColor(Color.DKGRAY);
@@ -630,6 +636,15 @@ public class MainActivity extends Activity {
     private String currentUrl() {
         String typed=urlIn(address.getText().toString());
         return typed!=null?typed:web.getUrl();
+    }
+    private void reloadAndFindLatestStreams(){
+        if(web==null||!allowed(web.getUrl())){
+            display("動画ページを開いてから更新してください。");return;
+        }
+        pinnedPageUrl=null;
+        resetDetectedStreams();
+        web.reload();
+        display("動画ページを更新しました。再生後、最新の配信候補を選んでください。");
     }
     private void openUrl(String raw) {
         String url=urlIn(raw);
