@@ -28,7 +28,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import com.yausername.youtubedl_android.YoutubeDL;
 import com.yausername.youtubedl_android.YoutubeDLRequest;
-import com.yausername.youtubedl_android.ffmpeg.FFmpeg;
+import com.yausername.ffmpeg.FFmpeg;
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -325,8 +325,8 @@ public class MainActivity extends Activity {
             YoutubeDL.getInstance().execute(req,processId,(percent,eta,line)->{
                 if(!stopFlag.get())runOnUiThread(()->{
                     progress.setIndeterminate(false);
-                    progress.setProgress(Math.max(0,Math.min(100,(int)percent)));
-                    status.setText("ダウンロード中 "+(int)percent+"%");
+                    progress.setProgress(Math.max(0,Math.min(100,Math.round(percent))));
+                    status.setText("ダウンロード中 "+Math.round(percent)+"%");
                 });
                 return kotlin.Unit.INSTANCE;
             });
