@@ -179,7 +179,22 @@ public class MainActivity extends Activity {
         "})()";
 
     private void selectStreamToSave(){
+        display("配信候補を読み込んでいます…");
+        final AtomicBoolean callbackResolved=new AtomicBoolean(false);
+        final Handler handler=new Handler(Looper.getMainLooper());
+        final Runnable fallback=()->{
+            if(!callbackResolved.compareAndSet(false,true))return;
+            ArrayList<StreamCandidate> candidates;
+            synchronized(streamsMutex){candidates=new ArrayList<>(detectedStreams.values());}
+            if(!candidates.isEmpty()){
+                renderStreamChoices(candidates,new ArrayList<>(),"","");
+                display("動画情報の応答が遅いため、検出済みURLから候補一覧を表示しました。");
+            }else display("動画情報の取得に時間がかかっています。再生後にもう一度お試しください。");
+        };
+        handler.postDelayed(fallback,6000);
         web.evaluateJavascript(PAGE_PREVIEW_SCRIPT,result->{
+            if(!callbackResolved.compareAndSet(false,true))return;
+            handler.removeCallbacks(fallback);
             final ArrayList<JSONObject> videoInfo=new ArrayList<>();
             String pageTitle="";
             String fallbackPoster="";
@@ -467,8 +482,19 @@ public class MainActivity extends Activity {
             SharedPreferences p=DownloadService.state(this);
             String summary=p.getString("error_summary","");
             String details=p.getString("error_detail","");
-            if(details.isEmpty())details="詳細ログはまだありません。再度ダウンロードを試してください。";
-            final String copyText="ShareSaveのエラー\n"+summary+"\n"+details;
+            String phase=p.getString("debug_stage","未記録");
+            String lastLine=p.getString("debug_last_line","まだ出力がありません");
+            String warning=p.getString("debug_warning","");
+            long started=p.getLong("debug_started_at",0);
+            long seconds=started>0?Math.max(0,(System.currentTimeMillis()-started)/1000):0;
+            if(details.isEmpty())details="処理中または詳細ログがまだありません。";
+            final String copyText="ShareSaveの診断情報\n"+
+                "経過時間: "+seconds+" 秒\n"+
+                "段階: "+phase+"\n"+
+                "最終出力: "+lastLine+"\n"+
+                (warning.isEmpty()?"":"警告: "+warning+"\n")+
+                "エラー概要: "+summary+"\n"+
+                "詳細:\n"+details;
             TextView content=new TextView(this);
             content.setText(copyText);
             content.setTextSize(12);
