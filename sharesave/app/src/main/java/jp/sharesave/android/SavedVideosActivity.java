@@ -92,6 +92,7 @@ public class SavedVideosActivity extends Activity {
         list.setEmptyView(null);
         root.addView(list,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
+        SafeWindowLayout.apply(this,root,false);
         loadVideos();
     }
     @Override protected void onResume(){
