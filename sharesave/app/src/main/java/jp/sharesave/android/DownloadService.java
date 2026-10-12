@@ -250,9 +250,16 @@ public final class DownloadService extends Service {
             ArrayList<String> logged=getLogSnapshot();
             String summary=DownloadErrorText.select(e.getMessage(),logged);
             String detail=DownloadErrorText.details(e.getMessage(),logged);
-            state(this).edit().putString("error_summary",summary).putString("error_detail",detail).apply();
+            DownloadFailureClassifier.Result classified=
+                DownloadFailureClassifier.evaluate(e.getMessage(),logged);
+            state(this).edit()
+                .putString("error_summary",summary)
+                .putString("error_detail",detail)
+                .putString("error_type",classified.category)
+                .putString("recovery_hint",classified.guidance)
+                .apply();
             finish(cancel.get()?"ダウンロードを中止しました":
-                "保存失敗: "+summary,cancel.get());
+                "保存失敗: "+classified.category+"。"+classified.guidance,cancel.get());
         }finally{
             monitorEngine=false;
             String id=processId;processId=null;
@@ -383,7 +390,8 @@ public final class DownloadService extends Service {
             req.addOption("--extractor-retries",1);
             req.addOption("--newline");
             // HLS and DASH are fragmented streams, not browser-cache files.
-            req.addOption("--concurrent-fragments",3);
+            // Be conservative: many parallel fragments can trigger CDN rate limits.
+            req.addOption("--concurrent-fragments",1);
             if(referer!=null)req.addOption("--referer",referer);
             if(origin!=null)req.addOption("--add-header","Origin:"+origin);
             if(userAgent!=null&&!userAgent.isEmpty())req.addOption("--user-agent",userAgent);
