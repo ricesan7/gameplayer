@@ -80,6 +80,7 @@ public class MainActivity extends Activity {
         }
     };
     private final ExecutorService previewPool=Executors.newFixedThreadPool(3);
+    private final LinkedHashMap<String,Bitmap> previewCache=new LinkedHashMap<>();
     private AtomicBoolean cancel=new AtomicBoolean(false);
     private volatile String processId;
     private EditText address;
@@ -347,7 +348,7 @@ public class MainActivity extends Activity {
             final String caption=imageFromVideo?"動画サムネイル":"ページ代表画像（動画との一致未確認）";
             // Image and size probing are independent: show previews as soon as ready.
             jobs.add(()->{
-                Bitmap bitmap=loadThumbnail(imageUrl,safePage,userAgent);
+                Bitmap bitmap=loadCachedThumbnail(imageUrl,safePage,userAgent);
                 runOnUiThread(()->{
                     if(!dialog.isShowing()||isFinishing()||isDestroyed())return;
                     if(bitmap!=null){
@@ -375,6 +376,17 @@ public class MainActivity extends Activity {
         dialog.show();
         // Launch asynchronous inspection only after the dialog can receive updates.
         for(Runnable job:jobs)previewPool.submit(job);
+    }
+    private Bitmap loadCachedThumbnail(String raw,String referer,String agent){
+        if(!StreamDetails.safe(raw))return null;
+        synchronized(previewCache){
+            if(previewCache.containsKey(raw))return previewCache.get(raw);
+            // Avoid repeated image fetches when 15 candidates share one poster.
+            Bitmap image=loadThumbnail(raw,referer,agent);
+            if(previewCache.size()>=10)previewCache.clear();
+            previewCache.put(raw,image);
+            return image;
+        }
     }
     private Bitmap loadThumbnail(String raw,String referer,String agent){
         if(!StreamDetails.safe(raw))return null;
