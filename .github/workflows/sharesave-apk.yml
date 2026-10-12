@@ -19,20 +19,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Unpack ShareSave
-        run: |
-          python3 -m pip install --user brotli
-          mkdir -p sharesave
-          python3 - <<'PY'
-          import base64,brotli,tarfile,io
-          from pathlib import Path
-          raw=base64.b64decode(Path("sharesave-source.br.b64").read_text())
-          with tarfile.open(fileobj=io.BytesIO(brotli.decompress(raw))) as tar:
-              tar.extractall("sharesave", filter="data")
-          PY
-      - run: gradle --no-daemon -p sharesave :app:assembleDebug
+      - name: Build debug APK
+        run: gradle --no-daemon -p sharesave :app:assembleDebug
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: ShareSave-v0.3.0-debug-apk
+          name: ShareSave-v0.3.1-debug-apk
           path: sharesave/app/build/outputs/apk/debug/app-debug.apk
