@@ -163,6 +163,7 @@ public final class DownloadService extends Service {
         timedOut.set(false);
         synchronized(engineLog){engineLog.clear();}
         state(this).edit().remove("error_detail").remove("error_summary")
+            .remove("error_type").remove("recovery_hint")
             .remove("debug_last_line").remove("debug_warning")
             .putLong("debug_started_at",System.currentTimeMillis())
             .putString("debug_stage","ダウンロード準備中").apply();
