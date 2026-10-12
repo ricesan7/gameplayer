@@ -1,6 +1,7 @@
 package jp.sharesave.android;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.res.ColorStateList;
@@ -16,6 +17,9 @@ import android.view.Gravity;
 import android.view.ViewGroup;
 import android.view.View;
 import android.webkit.CookieManager;
+import android.webkit.WebResourceResponse;
+import android.webkit.ServiceWorkerClient;
+import android.webkit.ServiceWorkerController;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -26,6 +30,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import org.json.JSONArray;
 import com.yausername.youtubedl_android.YoutubeDL;
 import com.yausername.youtubedl_android.YoutubeDLRequest;
 import com.yausername.ffmpeg.FFmpeg;
@@ -53,6 +58,74 @@ public class MainActivity extends Activity {
     private boolean pageLockEnabled=true;
     private String pinnedPageUrl=null;
     private Button pageLockButton;
+    private Button streamButton;
+    private final Object streamsMutex=new Object();
+    private final LinkedHashMap<String,StreamCandidate> detectedStreams=new LinkedHashMap<>();
+    private static final int MAX_CANDIDATES=15;
+    private static class StreamCandidate {
+        final String url;
+        final String kind;
+        StreamCandidate(String url,String kind){this.url=url;this.kind=kind;}
+    }
+    private void resetDetectedStreams(){
+        synchronized(streamsMutex){detectedStreams.clear();}
+        updateStreamButton();
+    }
+    private void updateStreamButton(){
+        int n;
+        synchronized(streamsMutex){n=detectedStreams.size();}
+        runOnUiThread(()->{
+            if(streamButton!=null)streamButton.setText("📺 再生中の配信を保存 ("+n+")");
+        });
+    }
+    private void observeMediaRequest(String url){
+        if(!allowed(url))return;
+        String kind=StreamUrlMatcher.mediaKind(url);
+        if(kind==null)return;
+        synchronized(streamsMutex){
+            if(detectedStreams.containsKey(url))return;
+            // Drop oldest candidate when adaptive bitrates produce many variants.
+            if(detectedStreams.size()>=MAX_CANDIDATES){
+                String oldest=detectedStreams.keySet().iterator().next();
+                detectedStreams.remove(oldest);
+            }
+            detectedStreams.put(url,new StreamCandidate(url,kind));
+        }
+        updateStreamButton();
+    }
+    private String candidateLabel(StreamCandidate candidate){
+        try{
+            URI u=new URI(candidate.url);
+            return candidate.kind+" / "+u.getHost()+" / "+Integer.toHexString(candidate.url.hashCode());
+        }catch(Exception e){return candidate.kind;}
+    }
+    private void selectStreamToSave(){
+        // A video element may expose the stream even if WebView's request hook missed it.
+        web.evaluateJavascript("(function(){var out=[];try{document.querySelectorAll('video,source').forEach(function(v){if(v.currentSrc)out.push(v.currentSrc);if(v.src)out.push(v.src)});}catch(e){}return out.slice(0,25);})()", result->{
+            try{
+                JSONArray urls=new JSONArray(result);
+                for(int i=0;i<urls.length();i++)observeMediaRequest(urls.optString(i,""));
+            }catch(Exception ignored){}
+            final ArrayList<StreamCandidate> candidates;
+            synchronized(streamsMutex){candidates=new ArrayList<>(detectedStreams.values());}
+            if(candidates.isEmpty()){
+                new AlertDialog.Builder(this).setTitle("配信URLが見つかりません")
+                    .setMessage("動画を一度再生してから再度お試しください。見つからない場合は「動画を保存」でページURLからの取得を試せます。DRM保護動画やblob:配信などは対応できません。")
+                    .setPositiveButton("OK",null).show();
+                return;
+            }
+            String[] labels=new String[candidates.size()];
+            for(int i=0;i<candidates.size();i++)labels[i]=candidateLabel(candidates.get(i));
+            new AlertDialog.Builder(this)
+                .setTitle("保存する配信を選択")
+                .setItems(labels,(dialog,index)->{
+                    String page=web.getUrl();
+                    saveLinkWithContext(candidates.get(index).url,allowed(page)?page:null);
+                })
+                .setNegativeButton("キャンセル",null)
+                .show();
+        });
+    }
     private boolean samePage(String a,String b) {
         if(a==null||b==null)return false;
         return a.split("#",2)[0].equals(b.split("#",2)[0]);
@@ -104,6 +177,9 @@ public class MainActivity extends Activity {
             display(pageLockEnabled?"ページ移動をブロックします。":"ページ固定を解除しました。");
         });
         root.addView(pageLockButton,lp(-1,46));
+        streamButton=button("📺 再生中の配信を保存 (0)");
+        streamButton.setOnClickListener(v->selectStreamToSave());
+        root.addView(streamButton,lp(-1,48));
         status=new TextView(this);
         status.setText("SNSの共有メニューからも起動できます。");
         status.setTextColor(Color.DKGRAY);
@@ -135,7 +211,20 @@ public class MainActivity extends Activity {
         // true + reject onCreateWindow prevents target=_blank from replacing this page.
         s.setSupportMultipleWindows(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
+        // Observe requests without replacing, replaying, or caching WebView responses.
+        ServiceWorkerController.getInstance().setServiceWorkerClient(new ServiceWorkerClient(){
+            @Override public WebResourceResponse shouldInterceptRequest(WebResourceRequest request){
+                if("GET".equalsIgnoreCase(request.getMethod()))
+                    observeMediaRequest(request.getUrl().toString());
+                return null;
+            }
+        });
         web.setWebViewClient(new WebViewClient(){
+            @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
+                if("GET".equalsIgnoreCase(request.getMethod()))
+                    observeMediaRequest(request.getUrl().toString());
+                return null; // preserve original playback and headers
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView w,WebResourceRequest r) {
                 if(!r.isForMainFrame()) return false;
                 String next=r.getUrl().toString();
@@ -202,6 +291,7 @@ public class MainActivity extends Activity {
         if(!allowed(url)){display("公開HTTPSのURLを入力してください。");return;}
         // Manual URL entry is trusted; pin once this page has loaded.
         pinnedPageUrl=null;
+        resetDetectedStreams();
         address.setText(url);web.loadUrl(url);
         display("ページ表示と動画ファイルの保存は別の処理です。");
     }
@@ -286,14 +376,19 @@ public class MainActivity extends Activity {
         });
     }
     private void saveLink(String raw) {
+        saveLinkWithContext(raw,null);
+    }
+    private void saveLinkWithContext(String raw,String referringPage) {
         String link=urlIn(raw);
         if(!allowed(link)){display("保存には公開HTTPSのURLが必要です。");return;}
+        final String browserUserAgent=web.getSettings().getUserAgentString();
+        final String safeReferer=allowed(referringPage)?referringPage:null;
         beginJob();AtomicBoolean stopFlag=cancel;
         pool.submit(()->{
             try {
                 display("動画の取得を確認しています…");
                 if(directMedia(link))downloadDirect(link,stopFlag);
-                else downloadPost(link,stopFlag);
+                else downloadPost(link,stopFlag,safeReferer,browserUserAgent);
                 if(!stopFlag.get())display("動画の保存が完了しました。ギャラリーをご確認ください。");
             }catch(Exception e) {
                 display("保存できませんでした: "+e.getMessage());
@@ -331,7 +426,7 @@ public class MainActivity extends Activity {
         }
         throw new IOException("転送が多すぎます。");
     }
-    private void downloadPost(String link,AtomicBoolean stopFlag) throws Exception {
+    private void downloadPost(String link,AtomicBoolean stopFlag,String referer,String userAgent) throws Exception {
         if(!initialized){
             synchronized(this){
                 if(!initialized){
@@ -351,10 +446,15 @@ public class MainActivity extends Activity {
             req.addOption("--no-write-thumbnail");
             req.addOption("--no-write-info-json");
             req.addOption("--socket-timeout",20);
+            // HLS and DASH are fragmented streams, not browser-cache files.
+            req.addOption("--concurrent-fragments",3);
+            if(referer!=null)req.addOption("--referer",referer);
+            if(userAgent!=null&&!userAgent.isEmpty())req.addOption("--user-agent",userAgent);
             req.addOption("--retries",2);
             req.addOption("--max-filesize","500M");
             req.addOption("-f","bv*+ba/b");
             req.addOption("--merge-output-format","mp4");
+            req.addOption("--restrict-filenames");
             req.addOption("-o",new File(temp,"%(id)s.%(ext)s").getAbsolutePath());
             YoutubeDL.getInstance().execute(req,processId,(percent,eta,line)->{
                 if(!stopFlag.get())runOnUiThread(()->{
