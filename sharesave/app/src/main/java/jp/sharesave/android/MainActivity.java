@@ -173,6 +173,7 @@ public class MainActivity extends Activity {
             .setView(scroller)
             .setNegativeButton("閉じる",null)
             .create();
+        final ArrayList<Runnable> jobs=new ArrayList<>();
 
         for(int index=0;index<candidates.size();index++){
             StreamCandidate c=candidates.get(index);
@@ -231,6 +232,11 @@ public class MainActivity extends Activity {
             size.setTextSize(12);
             size.setTextColor(blue);
             detail.addView(size,lp(-1,-2));
+            TextView origin=new TextView(this);
+            origin.setText(videoMatched?"画像: 動画から取得":"画像: ページ代表（未照合）");
+            origin.setTextSize(10);
+            origin.setTextColor(Color.DKGRAY);
+            detail.addView(origin,lp(-1,-2));
             row.addView(detail,new LinearLayout.LayoutParams(0,-2,1));
 
             row.setClickable(true);
@@ -245,7 +251,7 @@ public class MainActivity extends Activity {
             list.addView(divider,lp(-1,1));
 
             final String caption=videoMatched?"動画サムネイル":"ページ代表画像（動画との一致未確認）";
-            previewPool.submit(()->{
+            jobs.add(()->{
                 StreamDetails.SizeInfo detailInfo=StreamDetails.inspect(c.url,c.kind,safePage,userAgent,seconds);
                 Bitmap bitmap=loadThumbnail(imageUrl,safePage,userAgent);
                 runOnUiThread(()->{
@@ -261,6 +267,8 @@ public class MainActivity extends Activity {
             });
         }
         dialog.show();
+        // Launch asynchronous inspection only after the dialog can receive updates.
+        for(Runnable job:jobs)previewPool.submit(job);
     }
     private Bitmap loadThumbnail(String raw,String referer,String agent){
         if(!StreamDetails.safe(raw))return null;
