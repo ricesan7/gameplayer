@@ -22,10 +22,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Test stream URL recognition
+        run: gradle --no-daemon -p sharesave :app:testDebugUnitTest
       - name: Build debug APK
         run: gradle --no-daemon -p sharesave :app:assembleDebug
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: ShareSave-v0.3.2-popup-block-apk
+          name: ShareSave-v0.4.0-stream-detection-apk
           path: sharesave/app/build/outputs/apk/debug/app-debug.apk
