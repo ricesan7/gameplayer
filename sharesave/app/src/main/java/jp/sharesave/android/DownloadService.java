@@ -45,6 +45,8 @@ public final class DownloadService extends Service {
     private volatile String processId;
     private volatile boolean initialized;
     private volatile long expectedDirectBytes=-1;
+    private volatile long expectedSavingBytes=-1;
+    private volatile String processingStage="";
     private final ScheduledExecutorService watchdog=Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean timedOut=new AtomicBoolean(false);
     private volatile long lastEngineActivity=0;
@@ -438,39 +440,56 @@ public final class DownloadService extends Service {
             if(userAgent!=null&&!userAgent.isEmpty())req.addOption("--user-agent",userAgent);
             req.addOption("--retries",2);
             req.addOption("--max-filesize","4096M");
-            req.addOption("-f","bv*+ba/b");
+            // Prefer a complete audio+video format: it avoids lengthy FFmpeg
+            // merging when an already muxed HLS format is available.
+            // Split best-video/best-audio remains the fallback.
+            req.addOption("-f","b/bv*+ba");
             req.addOption("--merge-output-format","mp4");
             req.addOption("--restrict-filenames");
             req.addOption("-o",new File(temp,"%(id)s.%(ext)s").getAbsolutePath());
             beginWatchdog();
-            stage("動画取得エンジンを実行しています…");
+            stage("動画を解析・取得しています…");
+            DownloadProgress tracker=new DownloadProgress();
+            final AtomicBoolean merging=new AtomicBoolean(false);
             try{
-                // Merge stderr and stdout: otherwise urllib/network errors are only
-                // returned after completion, leaving the live screen at Extracting URL.
+                // Capture both stdout and stderr: FFmpeg progress in the wrapper
+                // is reported as a synthetic 99%, not video completion.
                 YoutubeDL.getInstance().execute(req,processId,true,(percent,eta,line)->{
                     rememberOutput(line);
                     if(!stopFlag.get()&&!timedOut.get()){
-                        int current=Math.max(0,Math.min(100,Math.round(percent)));
-                        publish("動画の取得中 "+current+"%",current,true);
+                        DownloadProgress.State state=tracker.accept(percent,line);
+                        if(state.postProcessing && merging.compareAndSet(false,true)){
+                            stage("動画と音声を結合・最終処理中（完了率は未取得）");
+                        }else if(!merging.get()){
+                            publish(state.stage,state.percent,true);
+                        }else{
+                            publish("動画と音声を結合・最終処理中（完了率は未取得）",-1,true);
+                        }
                     }
                     return kotlin.Unit.INSTANCE;
                 });
             }finally{monitorEngine=false;}
             if(timedOut.get())throw new IOException("取得エンジンが応答しませんでした。");
             if(stopFlag.get())throw new IOException("中止しました。");
-            stage("取得した動画の保存準備中…");
-            File[] files=temp.listFiles(f->f.isFile()&&!f.getName().endsWith(".part")&&!f.getName().endsWith(".ytdl")&&!f.getName().equals("browser-session-cookies.txt"));
-            if(files==null||files.length==0)throw new IOException("このページから動画ファイルを取得できません。");
-            if(files.length>20)throw new IOException("ファイルが多すぎます。");
-            for(File f:files) {
-                if(stopFlag.get())throw new IOException("中止しました。");
-                if(f.length()>LIMIT||f.length()==0)throw new IOException("ファイルサイズ上限を超えています。");
-                String type=f.getName().endsWith(".webm")?"video/webm":
-                    f.getName().endsWith(".m4a")?"audio/mp4":"video/mp4";
-                try(InputStream in=new FileInputStream(f)){
-                    store(in,type,f.getName(),stopFlag);
-                }
-            }
+            stage("ダウンロード完了・保存ファイルを検証中…");
+            File[] files=temp.listFiles(f->f.isFile() &&
+                !f.getName().equals("browser-session-cookies.txt"));
+            if(files==null||files.length==0)
+                throw new IOException("動画ファイルが生成されませんでした。");
+            if(files.length>40)throw new IOException("生成されたファイルが多すぎます。");
+            // The largest completed video is usually the merged output.
+            // Do not publish .part/.ytdl, audio-only or intermediate fragments.
+            File result=CompletedVideoFile.choose(files);
+            if(result==null)
+                throw new IOException("結合後の動画ファイルが見つかりません。エラー詳細でFFmpegの出力を確認してください。");
+            if(result.length()>LIMIT||result.length()==0)
+                throw new IOException("保存する動画のサイズが不正です。");
+            String type=CompletedVideoFile.mime(result.getName());
+            expectedSavingBytes=result.length();
+            try(InputStream in=new FileInputStream(result)){
+                stage("端末の動画フォルダへ保存しています…");
+                store(in,type,result.getName(),stopFlag);
+            }finally{expectedSavingBytes=-1;}
         }finally {
             processId=null;
             monitoredOutputDir=null;
@@ -504,19 +523,29 @@ public final class DownloadService extends Service {
                 total+=n;
                 if(total>LIMIT)throw new IOException("4GBの上限を超えています。");
                 out.write(buf,0,n);
-                if(expectedDirectBytes>0){
-                    int percent=(int)Math.min(100,(total*100.0)/expectedDirectBytes);
-                    publish("動画を保存中 "+percent+"%",percent,true);
+                long expected=expectedSavingBytes>0?expectedSavingBytes:expectedDirectBytes;
+                if(expected>0){
+                    int copied=(int)Math.min(100,Math.round(total*100.0/expected));
+                    // Reserve actual 100% for a fully closed, published MediaStore item.
+                    int shown=90+(copied*9/100);
+                    publish("端末へ保存中 "+copied+"%（最終工程）",shown,true);
                 }
             }
             if(total==0)throw new IOException("動画が空でした。");
+            // Wait for output.close() before marking the file visible to gallery.
+        }catch(Exception writeError){
+            try{getContentResolver().delete(uri,null,null);}catch(Exception ignored){}
+            throw writeError;
+        }
+        try{
+            stage("保存ファイルを確定しています…");
+            ContentValues finish=new ContentValues();
+            finish.put(MediaStore.MediaColumns.IS_PENDING,0);
+            int updated=getContentResolver().update(uri,finish,null,null);
+            if(updated!=1)throw new IOException("端末側が動画ファイルの公開に失敗しました。");
             okay=true;
         }finally{
-            if(okay){
-                ContentValues finish=new ContentValues();
-                finish.put(MediaStore.MediaColumns.IS_PENDING,0);
-                getContentResolver().update(uri,finish,null,null);
-            }else getContentResolver().delete(uri,null,null);
+            if(!okay)try{getContentResolver().delete(uri,null,null);}catch(Exception ignored){}
         }
     }
 }
