@@ -97,16 +97,20 @@ public final class DownloadService extends Service {
             timeoutWarningShown=false;
         }
         long idle=android.os.SystemClock.elapsedRealtime()-lastEngineActivity;
-        if(idle>=45000 && !timeoutWarningShown){
+        boolean isMerging="MERGING".equals(processingStage);
+        long warningAfter=isMerging?90000L:45000L;
+        long abortAfter=isMerging?300000L:120000L;
+        if(idle>=warningAfter && !timeoutWarningShown){
             timeoutWarningShown=true;
             state(this).edit().putString("debug_warning",
-                "取得エンジンの出力とファイル増加が45秒間止まっています").apply();
+                isMerging?"動画結合の出力とファイル変化が90秒間ありません":
+                    "取得エンジンの出力とファイル増加が45秒間止まっています").apply();
             publish("応答を待機中（通知から中止できます）",-1,true);
         }
-        if(idle>=120000 && timedOut.compareAndSet(false,true)){
+        if(idle>=abortAfter && timedOut.compareAndSet(false,true)){
             monitorEngine=false;
             state(this).edit().putString("debug_warning",
-                "120秒間進捗がなかったため接続処理を終了しました").apply();
+                "最終処理中に"+(abortAfter/1000)+"秒間進捗がなかったため中断しました").apply();
             String id=processId;
             if(id!=null)try{YoutubeDL.getInstance().destroyProcessById(id);}catch(Exception ignored){}
             publish("動画取得が応答しないため処理を中断しています",-1,true);
@@ -179,6 +183,7 @@ public final class DownloadService extends Service {
             return START_NOT_STICKY;
         }
         cancel.set(false);
+        processingStage="";
         monitorEngine=false;
         timedOut.set(false);
         synchronized(engineLog){engineLog.clear();}
@@ -228,13 +233,15 @@ public final class DownloadService extends Service {
         return b.build();
     }
     private void publish(String message,int percent,boolean active){
+        long now=android.os.SystemClock.elapsedRealtime();
+        // Avoid a SharedPreferences write for every FFmpeg line or HLS fragment.
+        // Show phase changes immediately, but throttle numeric percentages.
+        if(active&&percent>=0&&now-lastNotifyMs<700)return;
+        if(active&&percent<0&&message.equals(lastNotification)&&now-lastNotifyMs<900)return;
         state(this).edit().putString("message",message).putInt("percent",percent)
             .putBoolean("active",active).apply();
-        long now=android.os.SystemClock.elapsedRealtime();
-        // Reduce notification churn while retaining near-real-time progress.
-        if(active && now-lastNotifyMs<700 && message.equals(lastNotification))return;
-        if(active && now-lastNotifyMs<900 && percent>=0)return;
-        lastNotification=message;lastNotifyMs=now;
+        lastNotification=message;
+        lastNotifyMs=now;
         if(manager!=null)manager.notify(NOTIFICATION_ID,notification(message,percent,active));
     }
     private void executeRequest(Intent request){
@@ -282,6 +289,7 @@ public final class DownloadService extends Service {
             finish(cancel.get()?"ダウンロードを中止しました":
                 "保存失敗: "+classified.category+"。"+classified.guidance,cancel.get());
         }finally{
+            processingStage="";
             monitorEngine=false;
             monitoredOutputDir=null;
             String id=processId;processId=null;
@@ -447,6 +455,7 @@ public final class DownloadService extends Service {
             req.addOption("--merge-output-format","mp4");
             req.addOption("--restrict-filenames");
             req.addOption("-o",new File(temp,"%(id)s.%(ext)s").getAbsolutePath());
+            processingStage="DOWNLOADING";
             beginWatchdog();
             stage("動画を解析・取得しています…");
             DownloadProgress tracker=new DownloadProgress();
@@ -459,6 +468,7 @@ public final class DownloadService extends Service {
                     if(!stopFlag.get()&&!timedOut.get()){
                         DownloadProgress.State state=tracker.accept(percent,line);
                         if(state.postProcessing && merging.compareAndSet(false,true)){
+                            processingStage="MERGING";
                             stage("動画と音声を結合・最終処理中（完了率は未取得）");
                         }else if(!merging.get()){
                             publish(state.stage,state.percent,true);
@@ -468,7 +478,7 @@ public final class DownloadService extends Service {
                     }
                     return kotlin.Unit.INSTANCE;
                 });
-            }finally{monitorEngine=false;}
+            }finally{monitorEngine=false;processingStage="SAVING";}
             if(timedOut.get())throw new IOException("取得エンジンが応答しませんでした。");
             if(stopFlag.get())throw new IOException("中止しました。");
             stage("ダウンロード完了・保存ファイルを検証中…");
