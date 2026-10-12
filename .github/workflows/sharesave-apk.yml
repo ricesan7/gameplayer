@@ -29,5 +29,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: ShareSave-v0.6.0-stream-session-apk
+          name: ShareSave-v0.7.0-library-player-apk
           path: sharesave/app/build/outputs/apk/debug/app-debug.apk
