@@ -370,8 +370,12 @@ public final class DownloadService extends Service {
                 }
             }
         }
-        // Never block ordinary downloads on a GitHub update check.
-        // The user can update yt-dlp explicitly using the dedicated button.
+        // Install the official, checksum-pinned 2026.08.19 yt-dlp from APK assets.
+        // It contains upstream fix #15049 for the 2025.11.12 closed-file bug.
+        stage("修正版yt-dlpを確認しています…");
+        String effectiveVersion=BundledYtDlp.ensure(getApplicationContext());
+        state(this).edit().putString("engine_core_version",effectiveVersion).apply();
+        rememberLog("ShareSave yt-dlp core: "+effectiveVersion);
         stage("動画の配信URLを解析しています…");
         File temp=new File(getCacheDir(),"extract-"+UUID.randomUUID());
         if(!temp.mkdirs())throw new IOException("作業領域を作成できません。");
@@ -387,6 +391,9 @@ public final class DownloadService extends Service {
             req.addOption("--no-write-thumbnail");
             req.addOption("--no-write-info-json");
             req.addOption("--socket-timeout",20);
+            // Compressed manifests triggered yt-dlp's 2025.11.12 urllib bug.
+            // Request uncompressed HTTP bodies even when a different core is installed.
+            req.addOption("--add-header","Accept-Encoding: identity");
             req.addOption("--fragment-retries",2);
             req.addOption("--extractor-retries",1);
             req.addOption("--newline");
