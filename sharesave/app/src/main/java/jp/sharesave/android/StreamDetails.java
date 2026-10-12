@@ -91,6 +91,9 @@ final class StreamDetails {
         }catch(Exception e){return false;}
     }
     private static HttpURLConnection connect(String input,String method,String referer,String agent) throws Exception{
+        return connect(input,method,referer,agent,false);
+    }
+    private static HttpURLConnection connect(String input,String method,String referer,String agent,boolean byteRange) throws Exception{
         URL current=new URL(input);
         for(int i=0;i<4;i++){
             if(!safe(current.toString()))throw new java.io.IOException("Invalid redirect");
@@ -100,6 +103,7 @@ final class StreamDetails {
             c.setConnectTimeout(4500);
             c.setReadTimeout(4500);
             c.setRequestProperty("Accept-Encoding","identity");
+            if(byteRange)c.setRequestProperty("Range","bytes=0-0");
             if(agent!=null&&!agent.isEmpty())c.setRequestProperty("User-Agent",agent);
             if(safe(referer))c.setRequestProperty("Referer",referer);
             int code=c.getResponseCode();
@@ -127,12 +131,20 @@ final class StreamDetails {
             }finally{c.disconnect();}
         }catch(Exception ignored){}
         try{
-            // A 0-0 range request avoids downloading the whole file on servers without HEAD support.
-            HttpURLConnection c=connect(raw,"GET",referer,agent);
+            // Prefer a single-byte range request if HEAD is not supported.
+            HttpURLConnection c=connect(raw,"GET",referer,agent,true);
             try{
-                // Do not consume the body.
+                int code=c.getResponseCode();
+                if(code==206){
+                    String header=c.getHeaderField("Content-Range");
+                    if(header==null)return -1L;
+                    Matcher m=Pattern.compile("/(\\d+)$").matcher(header.trim());
+                    if(m.find())return Long.parseLong(m.group(1));
+                    return -1L;
+                }
+                // Some servers ignore Range; inspect headers without reading the body.
                 long length=c.getContentLengthLong();
-                return length>0 && c.getResponseCode()==200?length:-1L;
+                return code==200&&length>0?length:-1L;
             }finally{c.disconnect();}
         }catch(Exception ignored){}
         return -1;
