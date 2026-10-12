@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
     private static final Pattern HTTPS=Pattern.compile("https://[^\\s<>\\\"']+",Pattern.CASE_INSENSITIVE);
     // Transfers are owned by DownloadService, not by the Activity lifecycle.
     private final Handler downloadUiHandler=new Handler(Looper.getMainLooper());
+    private String lastTransferMessageShown="";
     private final Runnable updateDownloadUi=new Runnable(){
         @Override public void run(){
             SharedPreferences prefs=DownloadService.state(MainActivity.this);
@@ -65,7 +66,8 @@ public class MainActivity extends Activity {
                 prefs.edit().putBoolean("active",false).apply();
             String message=prefs.getString("message","");
             int percent=prefs.getInt("percent",-1);
-            if(active || !message.isEmpty()){
+            if(active || (!message.isEmpty()&&!message.equals(lastTransferMessageShown))){
+                lastTransferMessageShown=message;
                 if(status!=null)status.setText(message);
                 if(progress!=null){
                     progress.setVisibility(active?View.VISIBLE:View.GONE);
