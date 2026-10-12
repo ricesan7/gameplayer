@@ -180,18 +180,20 @@ public class MainActivity extends Activity {
             String poster=fallbackPoster;
             String title=pageTitle;
             double duration=0;
-            boolean videoMatched=false;
+            boolean imageFromVideo=false;
             for(JSONObject video:videos){
                 JSONArray arr=video.optJSONArray("urls");
                 boolean matched=false;
                 if(arr!=null)for(int k=0;k<arr.length();k++)
                     if(c.url.equals(arr.optString(k,"")))matched=true;
                 if(matched){
-                    videoMatched=true;
                     String candidateTitle=video.optString("title","");
                     if(!candidateTitle.isEmpty())title=candidateTitle;
                     String specificPoster=video.optString("poster","");
-                    if(allowed(specificPoster))poster=specificPoster;
+                    if(allowed(specificPoster)){
+                        poster=specificPoster;
+                        imageFromVideo=true;
+                    }
                     duration=video.optDouble("duration",0);
                     break;
                 }
@@ -233,7 +235,7 @@ public class MainActivity extends Activity {
             size.setTextColor(blue);
             detail.addView(size,lp(-1,-2));
             TextView origin=new TextView(this);
-            origin.setText(videoMatched?"画像: 動画から取得":"画像: ページ代表（未照合）");
+            origin.setText(imageFromVideo?"画像: 動画から取得":"画像: ページ代表（未照合）");
             origin.setTextSize(10);
             origin.setTextColor(Color.DKGRAY);
             detail.addView(origin,lp(-1,-2));
@@ -250,7 +252,7 @@ public class MainActivity extends Activity {
             divider.setBackgroundColor(Color.rgb(222,226,230));
             list.addView(divider,lp(-1,1));
 
-            final String caption=videoMatched?"動画サムネイル":"ページ代表画像（動画との一致未確認）";
+            final String caption=imageFromVideo?"動画サムネイル":"ページ代表画像（動画との一致未確認）";
             jobs.add(()->{
                 StreamDetails.SizeInfo detailInfo=StreamDetails.inspect(c.url,c.kind,safePage,userAgent,seconds);
                 Bitmap bitmap=loadThumbnail(imageUrl,safePage,userAgent);
