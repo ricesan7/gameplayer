@@ -49,8 +49,8 @@ final class DownloadProgress {
             int pct=Math.max(0,Math.min(100,Math.round(libraryPercent)));
             lastDownloadPercent=Math.max(lastDownloadPercent,pct);
         }
-        if(lastDownloadPercent>=99){
-            return new State("動画データ取得後の最終確認中…", -1,false);
+        if(lastDownloadPercent>=100){
+            return new State("動画データ取得完了・結合処理を確認中…",-1,false);
         }
         // Reserve completion for media-store publication, not yt-dlp.
         int display=Math.max(0,Math.min(90,(int)Math.round(lastDownloadPercent*0.9)));
