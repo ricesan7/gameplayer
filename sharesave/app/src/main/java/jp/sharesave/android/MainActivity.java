@@ -253,18 +253,24 @@ public class MainActivity extends Activity {
             list.addView(divider,lp(-1,1));
 
             final String caption=imageFromVideo?"動画サムネイル":"ページ代表画像（動画との一致未確認）";
+            // Image and size probing are independent: show previews as soon as ready.
             jobs.add(()->{
-                StreamDetails.SizeInfo detailInfo=StreamDetails.inspect(c.url,c.kind,safePage,userAgent,seconds);
                 Bitmap bitmap=loadThumbnail(imageUrl,safePage,userAgent);
                 runOnUiThread(()->{
                     if(!dialog.isShowing()||isFinishing()||isDestroyed())return;
-                    size.setText(detailInfo.label());
                     if(bitmap!=null){
                         thumbnail.setImageBitmap(bitmap);
                         thumbnail.setContentDescription(caption);
                     }else{
                         thumbnail.setContentDescription("サムネイル未取得");
                     }
+                });
+            });
+            jobs.add(()->{
+                StreamDetails.SizeInfo detailInfo=StreamDetails.inspect(c.url,c.kind,safePage,userAgent,seconds);
+                runOnUiThread(()->{
+                    if(dialog.isShowing()&&!isFinishing()&&!isDestroyed())
+                        size.setText(detailInfo.label());
                 });
             });
         }
