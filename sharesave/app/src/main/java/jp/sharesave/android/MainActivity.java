@@ -10,6 +10,10 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Parcelable;
@@ -49,7 +53,26 @@ import java.util.regex.*;
 public class MainActivity extends Activity {
     private static final long LIMIT=4L*1024*1024*1024; // 4 GiB max for long HLS recordings
     private static final Pattern HTTPS=Pattern.compile("https://[^\\s<>\\\"']+",Pattern.CASE_INSENSITIVE);
-    private final ExecutorService pool=Executors.newSingleThreadExecutor();
+    // Transfers are owned by DownloadService, not by the Activity lifecycle.
+    private final Handler downloadUiHandler=new Handler(Looper.getMainLooper());
+    private final Runnable updateDownloadUi=new Runnable(){
+        @Override public void run(){
+            SharedPreferences prefs=DownloadService.state(MainActivity.this);
+            boolean active=prefs.getBoolean("active",false);
+            String message=prefs.getString("message","");
+            int percent=prefs.getInt("percent",-1);
+            if(active || !message.isEmpty()){
+                if(status!=null)status.setText(message);
+                if(progress!=null){
+                    progress.setVisibility(active?View.VISIBLE:View.GONE);
+                    progress.setIndeterminate(percent<0);
+                    if(percent>=0)progress.setProgress(percent);
+                }
+                if(stop!=null)stop.setVisibility(active?View.VISIBLE:View.GONE);
+            }
+            downloadUiHandler.postDelayed(this,850);
+        }
+    };
     private final ExecutorService previewPool=Executors.newFixedThreadPool(3);
     private AtomicBoolean cancel=new AtomicBoolean(false);
     private volatile String processId;
@@ -427,10 +450,8 @@ public class MainActivity extends Activity {
         stop=button("ダウンロードを中止");
         stop.setVisibility(View.GONE);
         stop.setOnClickListener(v->{
-            cancel.set(true);
-            try { if(processId!=null) YoutubeDL.getInstance().destroyProcessById(processId); }
-            catch(Exception ignored){}
-            display("キャンセルを要求しました。");
+            DownloadService.cancelFromActivity(this);
+            display("ダウンロードの中止を要求しました。");
         });
         root.addView(stop,lp(-1,43));
         web=new WebView(this);
@@ -506,10 +527,18 @@ public class MainActivity extends Activity {
         if(web.canGoBack()){pinnedPageUrl=null;web.goBack();}
         else super.onBackPressed();
     }
+    @Override protected void onResume(){
+        super.onResume();
+        downloadUiHandler.removeCallbacks(updateDownloadUi);
+        downloadUiHandler.post(updateDownloadUi);
+    }
+    @Override protected void onPause(){
+        downloadUiHandler.removeCallbacks(updateDownloadUi);
+        super.onPause();
+    }
     @Override protected void onDestroy() {
-        cancel.set(true);
-        try {if(processId!=null)YoutubeDL.getInstance().destroyProcessById(processId);}catch(Exception ignored){}
-        pool.shutdownNow();
+        // DownloadService remains alive when this screen is closed.
+        downloadUiHandler.removeCallbacks(updateDownloadUi);
         previewPool.shutdownNow();
         web.stopLoading();
         web.destroy();
@@ -579,196 +608,58 @@ public class MainActivity extends Activity {
             else if(url!=null)saveLink(url);
         }
     }
-    private void beginJob() {
-        cancel.set(true);
-        try{if(processId!=null)YoutubeDL.getInstance().destroyProcessById(processId);}catch(Exception ignored){}
-        cancel=new AtomicBoolean(false);
-        progress.setIndeterminate(true);
-        progress.setVisibility(View.VISIBLE);
-        stop.setVisibility(View.VISIBLE);
-    }
-    private void endJob() {
-        runOnUiThread(()->{
-            progress.setVisibility(View.GONE);
-            stop.setVisibility(View.GONE);
-        });
-    }
     private void saveStreams(ArrayList<Uri> streams) {
-        beginJob();AtomicBoolean stopFlag=cancel;
-        pool.submit(()->{
-            int count=0;
-            try{
-                for(Uri u:streams) {
-                    if(stopFlag.get())throw new IOException("中止しました。");
-                    String type=getContentResolver().getType(u);
-                    if(type==null||( !type.startsWith("video/")&&!type.startsWith("image/")))
-                        throw new IOException("画像か動画ファイルのみ保存できます。");
-                    try(InputStream in=getContentResolver().openInputStream(u)){
-                        if(in==null)throw new IOException("共有ファイルを開けません。");
-                        store(in,type,"shared_"+System.currentTimeMillis(),stopFlag);
-                        count++;
-                    }
-                }
-                display(count+" 件をギャラリーに保存しました。");
-            }catch(Exception e){display("保存失敗: "+e.getMessage());}
-            finally{endJob();}
-        });
-    }
-    private void saveLink(String raw) {
-        saveLinkWithContext(raw,null);
-    }
-    private void saveLinkWithContext(String raw,String referringPage) {
-        saveLinkWithContext(raw,referringPage,null);
-    }
-    private void saveLinkWithContext(String raw,String referringPage,String origin) {
-        String link=urlIn(raw);
-        if(!allowed(link)){display("保存には公開HTTPSのURLが必要です。");return;}
-        final String browserUserAgent=web.getSettings().getUserAgentString();
-        final String safeReferer=validReferer(referringPage);
-        final String safeOrigin=validOrigin(origin);
-        // Read cookies on the UI thread; downloader only gets host-scoped entries.
-        final String mediaCookies=CookieManager.getInstance().getCookie(link);
-        final String refererCookies=safeReferer==null?null:CookieManager.getInstance().getCookie(safeReferer);
-        beginJob();AtomicBoolean stopFlag=cancel;
-        pool.submit(()->{
-            try {
-                display("動画の取得を確認しています…");
-                if(directMedia(link)&&safeReferer==null)downloadDirect(link,stopFlag);
-                else downloadPost(link,stopFlag,safeReferer,browserUserAgent,safeOrigin,mediaCookies,refererCookies);
-                if(!stopFlag.get())display("動画の保存が完了しました。ギャラリーをご確認ください。");
-            }catch(Exception e) {
-                display("保存できませんでした: "+e.getMessage());
-            }finally{endJob();}
-        });
-    }
-    private void downloadDirect(String link,AtomicBoolean stopFlag) throws Exception {
-        URL url=new URL(link);
-        for(int i=0;i<5;i++) {
-            if(!allowed(url.toString()))throw new IOException("安全なURLではありません。");
-            HttpURLConnection c=(HttpURLConnection)url.openConnection();
-            c.setInstanceFollowRedirects(false);
-            c.setConnectTimeout(15000);c.setReadTimeout(30000);
-            c.setRequestProperty("User-Agent","ShareSave/0.6.0");
-            try {
-                int code=c.getResponseCode();
-                if(code>=300&&code<400) {
-                    String location=c.getHeaderField("Location");
-                    if(location==null)throw new IOException("転送先が不明です。");
-                    url=new URL(url,location);
-                    continue;
-                }
-                if(code!=200)throw new IOException("HTTP "+code);
-                String type=c.getContentType();
-                if(type!=null)type=type.split(";")[0].trim().toLowerCase(Locale.ROOT);
-                if(type==null||(!type.startsWith("video/")&&!type.startsWith("image/")))
-                    throw new IOException("URLは動画/画像データを返しません。");
-                long size=c.getContentLengthLong();
-                if(size>LIMIT)throw new IOException("4GBの上限を超えています。");
-                try(InputStream in=c.getInputStream()){
-                    store(in,type,"video_"+System.currentTimeMillis(),stopFlag);
-                }
-                return;
-            }finally{c.disconnect();}
+        if(streams==null||streams.isEmpty())return;
+        if(DownloadService.state(this).getBoolean("active",false)){
+            display("既にダウンロード中です。完了後にもう一度お試しください。");
+            return;
         }
-        throw new IOException("転送が多すぎます。");
+        Intent service=new Intent(this,DownloadService.class)
+            .setAction(DownloadService.ACTION_SHARE)
+            .putParcelableArrayListExtra(DownloadService.EXTRA_URIS,streams);
+        // Forward the URI grant to the service when invoked via Android Sharesheet.
+        android.content.ClipData clips=null;
+        for(Uri uri:streams){
+            if(clips==null)clips=android.content.ClipData.newUri(
+                getContentResolver(),"Shared media",uri);
+            else clips.addItem(new android.content.ClipData.Item(uri));
+        }
+        if(clips!=null){
+            service.setClipData(clips);
+            service.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }
+        try{
+            startForegroundService(service);
+            display("バックグラウンドで共有ファイルを保存します。");
+        }catch(Exception e){display("保存を開始できませんでした: "+e.getMessage());}
     }
-    private void downloadPost(String link,AtomicBoolean stopFlag,String referer,String userAgent,
-                              String origin,String mediaCookies,String refererCookies) throws Exception {
-        if(!initialized){
-            synchronized(this){
-                if(!initialized){
-                    YoutubeDL.getInstance().init(getApplicationContext());
-                    FFmpeg.getInstance().init(getApplicationContext());
-                    initialized=true;
-                }
-            }
-        }
-        File temp=new File(getCacheDir(),"extract-"+UUID.randomUUID());
-        if(!temp.mkdirs())throw new IOException("作業領域を作成できません。");
-        processId="sharesave-"+UUID.randomUUID();
-        try {
-            File jar=new File(temp,"browser-session-cookies.txt");
-            int cookieCount=SessionCookies.writeCookieJar(
-                jar,link,mediaCookies,referer,refererCookies);
-            YoutubeDLRequest req=new YoutubeDLRequest(link);
-            if(cookieCount>0)req.addOption("--cookies",jar.getAbsolutePath());
-            req.addOption("--ignore-config");
-            req.addOption("--no-playlist");
-            req.addOption("--no-write-thumbnail");
-            req.addOption("--no-write-info-json");
-            req.addOption("--socket-timeout",20);
-            // HLS and DASH are fragmented streams, not browser-cache files.
-            req.addOption("--concurrent-fragments",3);
-            if(referer!=null)req.addOption("--referer",referer);
-            if(origin!=null)req.addOption("--add-header","Origin:"+origin);
-            if(userAgent!=null&&!userAgent.isEmpty())req.addOption("--user-agent",userAgent);
-            req.addOption("--retries",2);
-            req.addOption("--max-filesize","4096M");
-            req.addOption("-f","bv*+ba/b");
-            req.addOption("--merge-output-format","mp4");
-            req.addOption("--restrict-filenames");
-            req.addOption("-o",new File(temp,"%(id)s.%(ext)s").getAbsolutePath());
-            YoutubeDL.getInstance().execute(req,processId,(percent,eta,line)->{
-                if(!stopFlag.get())runOnUiThread(()->{
-                    progress.setIndeterminate(false);
-                    progress.setProgress(Math.max(0,Math.min(100,Math.round(percent))));
-                    status.setText("ダウンロード中 "+Math.round(percent)+"%");
-                });
-                return kotlin.Unit.INSTANCE;
-            });
-            if(stopFlag.get())throw new IOException("中止しました。");
-            File[] files=temp.listFiles(f->f.isFile()&&!f.getName().endsWith(".part")&&!f.getName().endsWith(".ytdl")&&!f.getName().equals("browser-session-cookies.txt"));
-            if(files==null||files.length==0)throw new IOException("このページから動画ファイルを取得できません。");
-            if(files.length>20)throw new IOException("ファイルが多すぎます。");
-            for(File f:files) {
-                if(stopFlag.get())throw new IOException("中止しました。");
-                if(f.length()>LIMIT||f.length()==0)throw new IOException("ファイルサイズ上限を超えています。");
-                String type=f.getName().endsWith(".webm")?"video/webm":
-                    f.getName().endsWith(".m4a")?"audio/mp4":"video/mp4";
-                try(InputStream in=new FileInputStream(f)){
-                    store(in,type,f.getName(),stopFlag);
-                }
-            }
-        }finally {
-            processId=null;
-            File[] files=temp.listFiles();
-            if(files!=null)for(File f:files)f.delete();
-            temp.delete();
-        }
+    private void saveLink(String raw){
+        saveLinkWithContext(raw,null,null);
     }
-    private void store(InputStream in,String type,String filename,AtomicBoolean stopFlag) throws Exception {
-        boolean image=type.startsWith("image/");
-        String ext=image?(type.contains("png")?".png":type.contains("webp")?".webp":".jpg"):
-            type.contains("webm")?".webm":type.contains("mp4")?".mp4":".mp4";
-        String name=filename.matches(".*\\.[a-zA-Z0-9]{2,5}$")?filename:filename+ext;
-        name=name.replaceAll("[^a-zA-Z0-9._-]","_");
-        ContentValues values=new ContentValues();
-        values.put(MediaStore.MediaColumns.DISPLAY_NAME,name);
-        values.put(MediaStore.MediaColumns.MIME_TYPE,type);
-        values.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                (image?Environment.DIRECTORY_PICTURES:Environment.DIRECTORY_MOVIES)+"/ShareSave");
-        values.put(MediaStore.MediaColumns.IS_PENDING,1);
-        Uri collection=image?MediaStore.Images.Media.EXTERNAL_CONTENT_URI:MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
-        Uri uri=getContentResolver().insert(collection,values);
-        if(uri==null)throw new IOException("保存先を作成できませんでした。");
-        boolean okay=false;
-        try(OutputStream out=getContentResolver().openOutputStream(uri)){
-            if(out==null)throw new IOException("保存先を開けませんでした。");
-            byte[] buf=new byte[65536];long total=0;int n;
-            while((n=in.read(buf))!=-1){
-                if(stopFlag.get())throw new IOException("中止しました。");
-                total+=n;
-                if(total>LIMIT)throw new IOException("4GBの上限を超えています。");
-                out.write(buf,0,n);
-            }
-            if(total==0)throw new IOException("動画が空でした。");
-            okay=true;
-        }finally{
-            if(okay){
-                ContentValues finish=new ContentValues();
-                finish.put(MediaStore.MediaColumns.IS_PENDING,0);
-                getContentResolver().update(uri,finish,null,null);
-            }else getContentResolver().delete(uri,null,null);
+    private void saveLinkWithContext(String raw,String ref){
+        saveLinkWithContext(raw,ref,null);
+    }
+    private void saveLinkWithContext(String raw,String ref,String origin){
+        String url=urlIn(raw);
+        if(!allowed(url)){display("保存には公開HTTPSのURLが必要です。");return;}
+        if(DownloadService.state(this).getBoolean("active",false)){
+            display("別の動画を保存中です。進捗は通知に表示されます。");
+            return;
         }
+        String referer=validReferer(ref);
+        String mediaCookie=CookieManager.getInstance().getCookie(url);
+        String refCookie=referer==null?null:CookieManager.getInstance().getCookie(referer);
+        Intent service=new Intent(this,DownloadService.class)
+            .setAction(DownloadService.ACTION_DOWNLOAD)
+            .putExtra(DownloadService.EXTRA_URL,url)
+            .putExtra(DownloadService.EXTRA_REFERER,referer)
+            .putExtra(DownloadService.EXTRA_UA,web.getSettings().getUserAgentString())
+            .putExtra(DownloadService.EXTRA_ORIGIN,validOrigin(origin))
+            .putExtra(DownloadService.EXTRA_MEDIA_COOKIE,mediaCookie)
+            .putExtra(DownloadService.EXTRA_REFERER_COOKIE,refCookie);
+        try{
+            startForegroundService(service);
+            display("ダウンロードを開始しました。別のアプリに移動しても継続します。");
+        }catch(Exception e){display("ダウンロードを開始できませんでした: "+e.getMessage());}
     }
 }
