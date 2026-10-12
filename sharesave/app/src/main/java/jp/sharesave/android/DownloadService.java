@@ -29,6 +29,7 @@ public final class DownloadService extends Service {
     public static final String ACTION_DOWNLOAD="jp.sharesave.android.DOWNLOAD";
     public static final String ACTION_SHARE="jp.sharesave.android.SHARE_MEDIA";
     public static final String ACTION_CANCEL="jp.sharesave.android.CANCEL";
+    public static final String ACTION_UPDATE="jp.sharesave.android.UPDATE_ENGINE";
     public static final String EXTRA_URL="url",EXTRA_REFERER="referer",EXTRA_UA="agent",
             EXTRA_ORIGIN="origin",EXTRA_MEDIA_COOKIE="mediaCookie",EXTRA_REFERER_COOKIE="refererCookie";
     public static final String EXTRA_URIS="uris";
@@ -44,6 +45,37 @@ public final class DownloadService extends Service {
     private volatile String processId;
     private volatile boolean initialized;
     private volatile long expectedDirectBytes=-1;
+    private final ArrayDeque<String> engineLog=new ArrayDeque<>();
+    private static final long UPDATE_INTERVAL=7L*24*60*60*1000;
+    private void rememberLog(String line){
+        if(line==null||line.isEmpty())return;
+        synchronized(engineLog){
+            if(engineLog.size()>=90)engineLog.removeFirst();
+            engineLog.addLast(line.length()>1200?line.substring(0,1200):line);
+        }
+    }
+    private ArrayList<String> getLogSnapshot(){
+        synchronized(engineLog){return new ArrayList<>(engineLog);}
+    }
+    private void maybeUpdateEngine(boolean force) throws Exception{
+        SharedPreferences p=state(this);
+        long last=p.getLong("yt_dlp_update_checked",0);
+        if(!force && System.currentTimeMillis()-last<UPDATE_INTERVAL)return;
+        publish("yt-dlpの更新を確認しています…",-1,true);
+        try{
+            YoutubeDL.getInstance().updateYoutubeDL(
+                getApplicationContext(),YoutubeDL.UpdateChannel.STABLE);
+            p.edit().putLong("yt_dlp_update_checked",System.currentTimeMillis())
+              .putString("engine_update_status","yt-dlpの更新を確認しました").apply();
+            rememberLog("yt-dlp updater: stable update checked");
+        }catch(Exception e){
+            p.edit().putLong("yt_dlp_update_checked",System.currentTimeMillis())
+              .putString("engine_update_status","更新確認に失敗: "+
+                  DownloadErrorText.select(e.getMessage(),null)).apply();
+            rememberLog("yt-dlp updater warning: "+e.getClass().getSimpleName());
+            if(force)throw e;
+        }
+    }
     private volatile String lastNotification="";
     private volatile long lastNotifyMs=0;
     private PowerManager.WakeLock wakeLock;
@@ -71,7 +103,7 @@ public final class DownloadService extends Service {
             publish("ダウンロードを中止しています…",-1,true);
             return START_NOT_STICKY;
         }
-        if(!ACTION_DOWNLOAD.equals(action)&&!ACTION_SHARE.equals(action)){
+        if(!ACTION_DOWNLOAD.equals(action)&&!ACTION_SHARE.equals(action)&&!ACTION_UPDATE.equals(action)){
             stopSelf();return START_NOT_STICKY;
         }
         if(!busy.compareAndSet(false,true)){
@@ -79,6 +111,8 @@ public final class DownloadService extends Service {
             return START_NOT_STICKY;
         }
         cancel.set(false);
+        synchronized(engineLog){engineLog.clear();}
+        state(this).edit().remove("error_detail").remove("error_summary").apply();
         running=true;
         String label="ダウンロード準備中";
         publish(label,-1,true);
@@ -135,7 +169,13 @@ public final class DownloadService extends Service {
             wakeLock=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"ShareSave:Downloading");
             wakeLock.setReferenceCounted(false);
             wakeLock.acquire(6*60*60*1000L);
-            if(ACTION_SHARE.equals(request.getAction()))saveStreams(request);
+            if(ACTION_UPDATE.equals(request.getAction())){
+                if(!initialized){
+                    YoutubeDL.getInstance().init(getApplicationContext());
+                    initialized=true;
+                }
+                maybeUpdateEngine(true);
+            }else if(ACTION_SHARE.equals(request.getAction()))saveStreams(request);
             else{
                 String url=request.getStringExtra(EXTRA_URL);
                 if(!StreamDetails.safe(url))throw new IOException("HTTPS動画URLが必要です");
@@ -147,9 +187,15 @@ public final class DownloadService extends Service {
                         request.getStringExtra(EXTRA_REFERER_COOKIE));
             }
             if(cancel.get())throw new InterruptedIOException("ユーザーが中止しました");
-            finish("ダウンロードが完了しました",false);
+            finish(ACTION_UPDATE.equals(request.getAction())?
+                "yt-dlpの更新確認が完了しました":"ダウンロードが完了しました",false);
         }catch(Exception e){
-            finish(cancel.get()?"ダウンロードを中止しました":"保存失敗: "+shortError(e),cancel.get());
+            ArrayList<String> logged=getLogSnapshot();
+            String summary=DownloadErrorText.select(e.getMessage(),logged);
+            String detail=DownloadErrorText.details(e.getMessage(),logged);
+            state(this).edit().putString("error_summary",summary).putString("error_detail",detail).apply();
+            finish(cancel.get()?"ダウンロードを中止しました":
+                "保存失敗: "+summary,cancel.get());
         }finally{
             String id=processId;processId=null;
             if(wakeLock!=null&&wakeLock.isHeld())wakeLock.release();
@@ -159,11 +205,7 @@ public final class DownloadService extends Service {
             stopSelf();
         }
     }
-    private String shortError(Exception e){
-        String message=e.getMessage();
-        return message==null?e.getClass().getSimpleName():message.substring(0,Math.min(110,message.length()));
-    }
-    private void finish(String message,boolean cancelled){
+     private void finish(String message,boolean cancelled){
         publish(message,100,false);
         Notification.Builder n=new Notification.Builder(this,CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
@@ -260,6 +302,7 @@ public final class DownloadService extends Service {
                 }
             }
         }
+        maybeUpdateEngine(false);
         File temp=new File(getCacheDir(),"extract-"+UUID.randomUUID());
         if(!temp.mkdirs())throw new IOException("作業領域を作成できません。");
         processId="sharesave-"+UUID.randomUUID();
@@ -286,6 +329,7 @@ public final class DownloadService extends Service {
             req.addOption("--restrict-filenames");
             req.addOption("-o",new File(temp,"%(id)s.%(ext)s").getAbsolutePath());
             YoutubeDL.getInstance().execute(req,processId,(percent,eta,line)->{
+                rememberLog(line);
                 if(!stopFlag.get()){
                     int current=Math.max(0,Math.min(100,Math.round(percent)));
                     publish("動画をダウンロード中 "+current+"%",current,true);
