@@ -22,6 +22,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Bundle patched yt-dlp core (official release, checksum verified)
+        run: |
+          mkdir -p sharesave/app/src/main/assets
+          curl --fail --location --retry 3 --connect-timeout 15 --max-time 120 \
+            'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp' \
+            --output sharesave/app/src/main/assets/yt-dlp-core-2026.08.19
+          echo '1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6  sharesave/app/src/main/assets/yt-dlp-core-2026.08.19' | sha256sum --check
       - name: Test stream URL recognition
         run: gradle --no-daemon -p sharesave :app:testDebugUnitTest
       - name: Build debug APK
