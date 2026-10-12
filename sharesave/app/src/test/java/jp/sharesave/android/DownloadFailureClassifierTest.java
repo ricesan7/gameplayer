@@ -12,6 +12,13 @@ public class DownloadFailureClassifierTest {
         assertTrue(DownloadFailureClassifier.evaluate("HTTP Error 401",null).category.contains("認証"));
         assertTrue(DownloadFailureClassifier.evaluate("HTTP Error 429",null).guidance.contains("時間"));
     }
+    @Test public void detectsUpstreamClosedFileBug(){
+        DownloadFailureClassifier.Result result=DownloadFailureClassifier.evaluate(
+            "ERROR: I/O operation on closed file.",
+            Arrays.asList("[generic] playlist: Downloading m3u8 information"));
+        assertTrue(result.category.contains("yt-dlp"));
+        assertTrue(result.guidance.contains("2025.11.12"));
+    }
     @Test public void diagnosesStallAndDrm(){
         assertTrue(DownloadFailureClassifier.evaluate("4分以上応答しませんでした",null).category.contains("タイムアウト"));
         assertTrue(DownloadFailureClassifier.evaluate("DRM restricted",null).guidance.contains("DRM"));
