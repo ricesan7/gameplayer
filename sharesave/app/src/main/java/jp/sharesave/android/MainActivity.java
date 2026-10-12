@@ -321,9 +321,23 @@ public class MainActivity extends Activity {
             row.setClickable(true);
             row.setBackgroundResource(android.R.drawable.list_selector_background);
             row.setOnClickListener(v->{
-                dialog.dismiss();
-                String referer=c.referer!=null?c.referer:safePage;
-                saveLinkWithContext(c.url,referer,c.origin);
+                long age=android.os.SystemClock.elapsedRealtime()-c.foundAtMs;
+                if(age>90000){
+                    new AlertDialog.Builder(this)
+                        .setTitle("配信URLが古い可能性があります")
+                        .setMessage("配信URLを検出してから90秒以上経過しています。動画を再生し直して最新の配信URLを取得できます。")
+                        .setPositiveButton("再取得",(d,w)->{
+                            dialog.dismiss();
+                            reloadAndFindLatestStreams();
+                        })
+                        .setNegativeButton("そのまま試す",(d,w)->{
+                            dialog.dismiss();
+                            saveLinkWithContext(c.url,c.referer!=null?c.referer:safePage,c.origin);
+                        }).show();
+                }else{
+                    dialog.dismiss();
+                    saveLinkWithContext(c.url,c.referer!=null?c.referer:safePage,c.origin);
+                }
             });
             list.addView(row,lp(-1,-2));
             View divider=new View(this);
@@ -344,13 +358,19 @@ public class MainActivity extends Activity {
                     }
                 });
             });
-            jobs.add(()->{
-                StreamDetails.SizeInfo detailInfo=StreamDetails.inspect(c.url,c.kind,safePage,userAgent,seconds);
-                runOnUiThread(()->{
-                    if(dialog.isShowing()&&!isFinishing()&&!isDestroyed())
-                        size.setText(detailInfo.label());
+            // Avoid re-fetching every signed HLS/DASH playlist during preview:
+            // rapid repeated requests may be rate limited by the CDN.
+            if(c.kind.startsWith("HLS")||c.kind.startsWith("DASH")){
+                size.setText("容量は保存後に確認（配信形式）");
+            }else{
+                jobs.add(()->{
+                    StreamDetails.SizeInfo info=StreamDetails.inspect(c.url,c.kind,safePage,userAgent,seconds);
+                    runOnUiThread(()->{
+                        if(dialog.isShowing()&&!isFinishing()&&!isDestroyed())
+                            size.setText(info.label());
+                    });
                 });
-            });
+            }
         }
         dialog.show();
         // Launch asynchronous inspection only after the dialog can receive updates.
