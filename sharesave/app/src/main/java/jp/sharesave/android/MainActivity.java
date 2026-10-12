@@ -509,6 +509,8 @@ public class MainActivity extends Activity {
         showError.setOnClickListener(v->{
             SharedPreferences p=DownloadService.state(this);
             String summary=p.getString("error_summary","");
+            String cause=p.getString("error_type","");
+            String recovery=p.getString("recovery_hint","");
             String details=p.getString("error_detail","");
             String phase=p.getString("debug_stage","未記録");
             String lastLine=p.getString("debug_last_line","まだ出力がありません");
@@ -522,6 +524,8 @@ public class MainActivity extends Activity {
                 "最終出力: "+lastLine+"\n"+
                 (warning.isEmpty()?"":"警告: "+warning+"\n")+
                 "エラー概要: "+summary+"\n"+
+                (cause.isEmpty()?"":"判定: "+cause+"\n")+
+                (recovery.isEmpty()?"":"推奨対応: "+recovery+"\n")+
                 "詳細:\n"+details;
             TextView content=new TextView(this);
             content.setText(copyText);
