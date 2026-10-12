@@ -13,8 +13,7 @@
     <activity android:name=".SavedVideosActivity" android:exported="false"/>
     <activity android:name=".VideoPlayerActivity" android:exported="false"
       android:screenOrientation="fullSensor" android:configChanges="orientation|screenSize|keyboardHidden"/>
-    <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop"
-      android:configChanges="orientation|screenSize|keyboardHidden">
+    <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
       <intent-filter>
         <action android:name="android.intent.action.SEND"/>
