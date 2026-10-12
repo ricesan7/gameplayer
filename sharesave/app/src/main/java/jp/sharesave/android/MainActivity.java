@@ -47,7 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.*;
 
 public class MainActivity extends Activity {
-    private static final long LIMIT=500L*1024*1024;
+    private static final long LIMIT=4L*1024*1024*1024; // 4 GiB max for long HLS recordings
     private static final Pattern HTTPS=Pattern.compile("https://[^\\s<>\\\"']+",Pattern.CASE_INSENSITIVE);
     private final ExecutorService pool=Executors.newSingleThreadExecutor();
     private final ExecutorService previewPool=Executors.newFixedThreadPool(3);
@@ -71,7 +71,30 @@ public class MainActivity extends Activity {
     private static class StreamCandidate {
         final String url;
         final String kind;
-        StreamCandidate(String url,String kind){this.url=url;this.kind=kind;}
+        final String referer;
+        final String origin;
+        StreamCandidate(String url,String kind,String referer,String origin){
+            this.url=url;this.kind=kind;this.referer=referer;this.origin=origin;
+        }
+    }
+    private static String requestHeader(Map<String,String> headers,String key){
+        if(headers==null)return null;
+        for(Map.Entry<String,String> item:headers.entrySet())
+            if(key.equalsIgnoreCase(item.getKey()))return item.getValue();
+        return null;
+    }
+    private static String validReferer(String referer){
+        return allowed(referer)?referer:null;
+    }
+    private static String validOrigin(String origin){
+        if(!allowed(origin))return null;
+        try {
+            URI u=new URI(origin);
+            String path=u.getRawPath();
+            if(u.getRawQuery()!=null||u.getRawFragment()!=null||
+                (path!=null&&!path.isEmpty()&&!"/".equals(path)))return null;
+            return origin;
+        }catch(Exception ignored){return null;}
     }
     private void resetDetectedStreams(){
         synchronized(streamsMutex){detectedStreams.clear();}
@@ -84,18 +107,25 @@ public class MainActivity extends Activity {
             if(streamButton!=null)streamButton.setText("📺 再生中の配信を保存 ("+n+")");
         });
     }
-    private void observeMediaRequest(String url){
+    private void observeMediaRequest(String url){observeMediaRequest(url,null,null);}
+    private void observeMediaRequest(String url,String referer,String origin){
         if(!allowed(url))return;
         String kind=StreamUrlMatcher.mediaKind(url);
         if(kind==null)return;
+        referer=validReferer(referer);
+        origin=validOrigin(origin);
         synchronized(streamsMutex){
-            if(detectedStreams.containsKey(url))return;
-            // Drop oldest candidate when adaptive bitrates produce many variants.
+            StreamCandidate previous=detectedStreams.get(url);
+            if(previous!=null){
+                if(previous.referer==null&&referer!=null)
+                    detectedStreams.put(url,new StreamCandidate(url,kind,referer,origin));
+                return;
+            }
             if(detectedStreams.size()>=MAX_CANDIDATES){
                 String oldest=detectedStreams.keySet().iterator().next();
                 detectedStreams.remove(oldest);
             }
-            detectedStreams.put(url,new StreamCandidate(url,kind));
+            detectedStreams.put(url,new StreamCandidate(url,kind,referer,origin));
         }
         updateStreamButton();
     }
@@ -245,7 +275,8 @@ public class MainActivity extends Activity {
             row.setBackgroundResource(android.R.drawable.list_selector_background);
             row.setOnClickListener(v->{
                 dialog.dismiss();
-                saveLinkWithContext(c.url,safePage);
+                String referer=c.referer!=null?c.referer:safePage;
+                saveLinkWithContext(c.url,referer,c.origin);
             });
             list.addView(row,lp(-1,-2));
             View divider=new View(this);
@@ -409,14 +440,18 @@ public class MainActivity extends Activity {
         ServiceWorkerController.getInstance().setServiceWorkerClient(new ServiceWorkerClient(){
             @Override public WebResourceResponse shouldInterceptRequest(WebResourceRequest request){
                 if("GET".equalsIgnoreCase(request.getMethod()))
-                    observeMediaRequest(request.getUrl().toString());
+                    observeMediaRequest(request.getUrl().toString(),
+                        requestHeader(request.getRequestHeaders(),"Referer"),
+                        requestHeader(request.getRequestHeaders(),"Origin"));
                 return null;
             }
         });
         web.setWebViewClient(new WebViewClient(){
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                 if("GET".equalsIgnoreCase(request.getMethod()))
-                    observeMediaRequest(request.getUrl().toString());
+                    observeMediaRequest(request.getUrl().toString(),
+                        requestHeader(request.getRequestHeaders(),"Referer"),
+                        requestHeader(request.getRequestHeaders(),"Origin"));
                 return null; // preserve original playback and headers
             }
             @Override public boolean shouldOverrideUrlLoading(WebView w,WebResourceRequest r) {
@@ -574,16 +609,23 @@ public class MainActivity extends Activity {
         saveLinkWithContext(raw,null);
     }
     private void saveLinkWithContext(String raw,String referringPage) {
+        saveLinkWithContext(raw,referringPage,null);
+    }
+    private void saveLinkWithContext(String raw,String referringPage,String origin) {
         String link=urlIn(raw);
         if(!allowed(link)){display("保存には公開HTTPSのURLが必要です。");return;}
         final String browserUserAgent=web.getSettings().getUserAgentString();
-        final String safeReferer=allowed(referringPage)?referringPage:null;
+        final String safeReferer=validReferer(referringPage);
+        final String safeOrigin=validOrigin(origin);
+        // Read cookies on the UI thread; downloader only gets host-scoped entries.
+        final String mediaCookies=CookieManager.getInstance().getCookie(link);
+        final String refererCookies=safeReferer==null?null:CookieManager.getInstance().getCookie(safeReferer);
         beginJob();AtomicBoolean stopFlag=cancel;
         pool.submit(()->{
             try {
                 display("動画の取得を確認しています…");
-                if(directMedia(link))downloadDirect(link,stopFlag);
-                else downloadPost(link,stopFlag,safeReferer,browserUserAgent);
+                if(directMedia(link)&&safeReferer==null)downloadDirect(link,stopFlag);
+                else downloadPost(link,stopFlag,safeReferer,browserUserAgent,safeOrigin,mediaCookies,refererCookies);
                 if(!stopFlag.get())display("動画の保存が完了しました。ギャラリーをご確認ください。");
             }catch(Exception e) {
                 display("保存できませんでした: "+e.getMessage());
@@ -597,7 +639,7 @@ public class MainActivity extends Activity {
             HttpURLConnection c=(HttpURLConnection)url.openConnection();
             c.setInstanceFollowRedirects(false);
             c.setConnectTimeout(15000);c.setReadTimeout(30000);
-            c.setRequestProperty("User-Agent","ShareSave/0.3.1");
+            c.setRequestProperty("User-Agent","ShareSave/0.6.0");
             try {
                 int code=c.getResponseCode();
                 if(code>=300&&code<400) {
@@ -612,7 +654,7 @@ public class MainActivity extends Activity {
                 if(type==null||(!type.startsWith("video/")&&!type.startsWith("image/")))
                     throw new IOException("URLは動画/画像データを返しません。");
                 long size=c.getContentLengthLong();
-                if(size>LIMIT)throw new IOException("500MBの上限を超えています。");
+                if(size>LIMIT)throw new IOException("4GBの上限を超えています。");
                 try(InputStream in=c.getInputStream()){
                     store(in,type,"video_"+System.currentTimeMillis(),stopFlag);
                 }
@@ -621,7 +663,8 @@ public class MainActivity extends Activity {
         }
         throw new IOException("転送が多すぎます。");
     }
-    private void downloadPost(String link,AtomicBoolean stopFlag,String referer,String userAgent) throws Exception {
+    private void downloadPost(String link,AtomicBoolean stopFlag,String referer,String userAgent,
+                              String origin,String mediaCookies,String refererCookies) throws Exception {
         if(!initialized){
             synchronized(this){
                 if(!initialized){
@@ -635,7 +678,11 @@ public class MainActivity extends Activity {
         if(!temp.mkdirs())throw new IOException("作業領域を作成できません。");
         processId="sharesave-"+UUID.randomUUID();
         try {
+            File jar=new File(temp,"browser-session-cookies.txt");
+            int cookieCount=SessionCookies.writeCookieJar(
+                jar,link,mediaCookies,referer,refererCookies);
             YoutubeDLRequest req=new YoutubeDLRequest(link);
+            if(cookieCount>0)req.addOption("--cookies",jar.getAbsolutePath());
             req.addOption("--ignore-config");
             req.addOption("--no-playlist");
             req.addOption("--no-write-thumbnail");
@@ -644,9 +691,10 @@ public class MainActivity extends Activity {
             // HLS and DASH are fragmented streams, not browser-cache files.
             req.addOption("--concurrent-fragments",3);
             if(referer!=null)req.addOption("--referer",referer);
+            if(origin!=null)req.addOption("--add-header","Origin:"+origin);
             if(userAgent!=null&&!userAgent.isEmpty())req.addOption("--user-agent",userAgent);
             req.addOption("--retries",2);
-            req.addOption("--max-filesize","500M");
+            req.addOption("--max-filesize","4096M");
             req.addOption("-f","bv*+ba/b");
             req.addOption("--merge-output-format","mp4");
             req.addOption("--restrict-filenames");
@@ -660,7 +708,7 @@ public class MainActivity extends Activity {
                 return kotlin.Unit.INSTANCE;
             });
             if(stopFlag.get())throw new IOException("中止しました。");
-            File[] files=temp.listFiles(f->f.isFile()&&!f.getName().endsWith(".part")&&!f.getName().endsWith(".ytdl"));
+            File[] files=temp.listFiles(f->f.isFile()&&!f.getName().endsWith(".part")&&!f.getName().endsWith(".ytdl")&&!f.getName().equals("browser-session-cookies.txt"));
             if(files==null||files.length==0)throw new IOException("このページから動画ファイルを取得できません。");
             if(files.length>20)throw new IOException("ファイルが多すぎます。");
             for(File f:files) {
@@ -701,7 +749,7 @@ public class MainActivity extends Activity {
             while((n=in.read(buf))!=-1){
                 if(stopFlag.get())throw new IOException("中止しました。");
                 total+=n;
-                if(total>LIMIT)throw new IOException("500MBの上限を超えています。");
+                if(total>LIMIT)throw new IOException("4GBの上限を超えています。");
                 out.write(buf,0,n);
             }
             if(total==0)throw new IOException("動画が空でした。");
