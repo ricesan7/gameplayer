@@ -399,6 +399,10 @@ public class MainActivity extends Activity {
         toolbar.addView(open,new LinearLayout.LayoutParams(0,dp(52),1));
         toolbar.addView(save,new LinearLayout.LayoutParams(0,dp(52),1));
         root.addView(toolbar,lp(-1,56));
+        Button library=button("📁 保存済み動画を見る・再生・削除");
+        library.setOnClickListener(v->startActivity(
+            new Intent(this,SavedVideosActivity.class)));
+        root.addView(library,lp(-1,49));
         pageLockButton=button("🔒 ページ固定: ON");
         pageLockButton.setOnClickListener(v->{
             pageLockEnabled=!pageLockEnabled;
