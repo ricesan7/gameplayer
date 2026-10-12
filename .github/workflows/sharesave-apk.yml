@@ -29,5 +29,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: ShareSave-v0.4.0-stream-detection-apk
+          name: ShareSave-v0.5.0-preview-size-apk
           path: sharesave/app/build/outputs/apk/debug/app-debug.apk
