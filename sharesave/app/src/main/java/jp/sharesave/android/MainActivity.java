@@ -516,6 +516,12 @@ public class MainActivity extends Activity {
         });
         root.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
+        // Android 13+: optional permission, so progress appears in the notification shade.
+        if(Build.VERSION.SDK_INT>=33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=
+                android.content.pm.PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},908);
+        }
         receive(getIntent());
     }
     @Override protected void onNewIntent(Intent intent) {
