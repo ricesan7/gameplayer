@@ -64,7 +64,7 @@ public final class DownloadService extends Service {
         publish("yt-dlpの更新を確認しています…",-1,true);
         try{
             YoutubeDL.getInstance().updateYoutubeDL(
-                getApplicationContext(),YoutubeDL.UpdateChannel.STABLE);
+                getApplicationContext(),YoutubeDL.UpdateChannel._STABLE);
             p.edit().putLong("yt_dlp_update_checked",System.currentTimeMillis())
               .putString("engine_update_status","yt-dlpの更新を確認しました").apply();
             rememberLog("yt-dlp updater: stable update checked");
