@@ -41,6 +41,7 @@ public final class DownloadService extends Service {
     private final AtomicBoolean cancel=new AtomicBoolean(false);
     private volatile String processId;
     private volatile boolean initialized;
+    private volatile long expectedDirectBytes=-1;
     private volatile String lastNotification="";
     private volatile long lastNotifyMs=0;
     private PowerManager.WakeLock wakeLock;
@@ -231,9 +232,10 @@ public final class DownloadService extends Service {
                     throw new IOException("URLは動画/画像データを返しません。");
                 long size=c.getContentLengthLong();
                 if(size>LIMIT)throw new IOException("4GBの上限を超えています。");
+                expectedDirectBytes=size;
                 try(InputStream in=c.getInputStream()){
                     store(in,type,"video_"+System.currentTimeMillis(),stopFlag);
-                }
+                }finally{expectedDirectBytes=-1;}
                 return;
             }finally{c.disconnect();}
         }
@@ -321,11 +323,16 @@ public final class DownloadService extends Service {
         try(OutputStream out=getContentResolver().openOutputStream(uri)){
             if(out==null)throw new IOException("保存先を開けませんでした。");
             byte[] buf=new byte[65536];long total=0;int n;
+            publish("端末へ保存しています…",-1,true);
             while((n=in.read(buf))!=-1){
                 if(stopFlag.get())throw new IOException("中止しました。");
                 total+=n;
                 if(total>LIMIT)throw new IOException("4GBの上限を超えています。");
                 out.write(buf,0,n);
+                if(expectedDirectBytes>0){
+                    int percent=(int)Math.min(100,(total*100.0)/expectedDirectBytes);
+                    publish("動画を保存中 "+percent+"%",percent,true);
+                }
             }
             if(total==0)throw new IOException("動画が空でした。");
             okay=true;
