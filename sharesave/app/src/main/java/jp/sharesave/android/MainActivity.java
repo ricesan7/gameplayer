@@ -12,6 +12,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
+import android.content.res.Configuration;
+import android.widget.FrameLayout;
 import android.os.Handler;
 import android.os.Looper;
 import android.content.Context;
@@ -84,6 +86,35 @@ public class MainActivity extends Activity {
     private TextView status;
     private ProgressBar progress;
     private WebView web;
+    private LinearLayout appRoot;
+    private FrameLayout fullscreenWebLayer;
+    private View fullscreenWebView;
+    private WebChromeClient.CustomViewCallback fullscreenWebCallback;
+    private void openWebFullscreen(View custom,WebChromeClient.CustomViewCallback callback){
+        if(fullscreenWebView!=null){
+            callback.onCustomViewHidden();return;
+        }
+        FrameLayout container=findViewById(android.R.id.content);
+        fullscreenWebView=custom;
+        fullscreenWebCallback=callback;
+        fullscreenWebLayer=new FrameLayout(this);
+        fullscreenWebLayer.setBackgroundColor(Color.BLACK);
+        fullscreenWebLayer.addView(custom,new FrameLayout.LayoutParams(-1,-1));
+        container.addView(fullscreenWebLayer,new FrameLayout.LayoutParams(-1,-1));
+        if(appRoot!=null)appRoot.setVisibility(View.INVISIBLE);
+        SafeWindowLayout.immersive(this,true,true);
+    }
+    private void closeWebFullscreen(){
+        if(fullscreenWebView==null)return;
+        FrameLayout container=findViewById(android.R.id.content);
+        if(container!=null&&fullscreenWebLayer!=null)container.removeView(fullscreenWebLayer);
+        if(fullscreenWebCallback!=null)fullscreenWebCallback.onCustomViewHidden();
+        fullscreenWebCallback=null;
+        fullscreenWebView=null;
+        fullscreenWebLayer=null;
+        if(appRoot!=null)appRoot.setVisibility(View.VISIBLE);
+        SafeWindowLayout.immersive(this,false,false);
+    }
     private Button stop;
     private int blue=Color.rgb(45,92,217);
     private boolean initialized=false;
@@ -397,6 +428,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         LinearLayout root=new LinearLayout(this);
+        appRoot=root;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12),dp(18),dp(12),dp(10));
         root.setBackgroundColor(Color.rgb(249,249,251));
@@ -546,6 +578,13 @@ public class MainActivity extends Activity {
             }
         });
         web.setWebChromeClient(new WebChromeClient(){
+            @Override public void onShowCustomView(View view,CustomViewCallback callback){
+                // HTML5 player full-screen is an explicit video action, not an ad popup.
+                openWebFullscreen(view,callback);
+            }
+            @Override public void onHideCustomView(){
+                closeWebFullscreen();
+            }
             @Override public boolean onCreateWindow(WebView view,boolean isDialog,
                                                       boolean isUserGesture,android.os.Message resultMsg){
                 display("広告などの別ウィンドウをブロックしました。");
@@ -558,6 +597,7 @@ public class MainActivity extends Activity {
         });
         root.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
+        SafeWindowLayout.apply(this,root,false);
         // Android 13+: optional permission, so progress appears in the notification shade.
         if(Build.VERSION.SDK_INT>=33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=
@@ -572,8 +612,14 @@ public class MainActivity extends Activity {
         receive(intent);
     }
     @Override public void onBackPressed() {
+        if(fullscreenWebView!=null){closeWebFullscreen();return;}
         if(web.canGoBack()){pinnedPageUrl=null;web.goBack();}
         else super.onBackPressed();
+    }
+    @Override public void onConfigurationChanged(Configuration config){
+        super.onConfigurationChanged(config);
+        // Preserve WebView/HTML5 playback across physical rotation.
+        SafeWindowLayout.immersive(this,fullscreenWebView!=null,fullscreenWebView==null?false:true);
     }
     @Override protected void onResume(){
         super.onResume();
@@ -585,6 +631,7 @@ public class MainActivity extends Activity {
         super.onPause();
     }
     @Override protected void onDestroy() {
+        if(fullscreenWebView!=null)closeWebFullscreen();
         // DownloadService remains alive when this screen is closed.
         downloadUiHandler.removeCallbacks(updateDownloadUi);
         previewPool.shutdownNow();
