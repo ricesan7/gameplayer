@@ -3,6 +3,8 @@
   <application android:theme="@android:style/Theme.Material.Light.NoActionBar"
     android:label="ShareSave" android:usesCleartextTraffic="false"
     android:allowBackup="false" android:extractNativeLibs="true">
+    <activity android:name=".SavedVideosActivity" android:exported="false"/>
+    <activity android:name=".VideoPlayerActivity" android:exported="false"/>
     <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
       <intent-filter>
