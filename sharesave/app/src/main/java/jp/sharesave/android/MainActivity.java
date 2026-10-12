@@ -58,7 +58,9 @@ public class MainActivity extends Activity {
     private final Runnable updateDownloadUi=new Runnable(){
         @Override public void run(){
             SharedPreferences prefs=DownloadService.state(MainActivity.this);
-            boolean active=prefs.getBoolean("active",false);
+            boolean active=DownloadService.isRunning();
+            if(!active&&prefs.getBoolean("active",false))
+                prefs.edit().putBoolean("active",false).apply();
             String message=prefs.getString("message","");
             int percent=prefs.getInt("percent",-1);
             if(active || !message.isEmpty()){
@@ -616,7 +618,7 @@ public class MainActivity extends Activity {
     }
     private void saveStreams(ArrayList<Uri> streams) {
         if(streams==null||streams.isEmpty())return;
-        if(DownloadService.state(this).getBoolean("active",false)){
+        if(DownloadService.isRunning()){
             display("既にダウンロード中です。完了後にもう一度お試しください。");
             return;
         }
@@ -648,7 +650,7 @@ public class MainActivity extends Activity {
     private void saveLinkWithContext(String raw,String ref,String origin){
         String url=urlIn(raw);
         if(!allowed(url)){display("保存には公開HTTPSのURLが必要です。");return;}
-        if(DownloadService.state(this).getBoolean("active",false)){
+        if(DownloadService.isRunning()){
             display("別の動画を保存中です。進捗は通知に表示されます。");
             return;
         }
