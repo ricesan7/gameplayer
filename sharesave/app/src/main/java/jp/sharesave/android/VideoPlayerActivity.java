@@ -14,7 +14,6 @@ import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -29,7 +28,7 @@ public class VideoPlayerActivity extends Activity {
     static final String EXTRA_URI="jp.sharesave.android.VIDEO_URI";
     static final String EXTRA_TITLE="jp.sharesave.android.VIDEO_TITLE";
     private VideoView video;
-    private FrameLayout root;
+    private LinearLayout root;
     private LinearLayout header;
     private Button playPause;
     private Button fullScreenButton;
@@ -96,12 +95,16 @@ public class VideoPlayerActivity extends Activity {
             finish();return;
         }
         mediaUri=Uri.parse(raw);
-        root=new FrameLayout(this);
+        // The old working ShareSave player placed VideoView in its own
+        // measured layout. Do not paint the SurfaceView itself black:
+        // an opaque View background can conceal its decoded video layer.
+        root=new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
 
         video=new VideoView(this);
-        video.setBackgroundColor(Color.BLACK);
-        root.addView(video,new FrameLayout.LayoutParams(-1,-1));
+        video.setBackground(null);
+        video.setKeepScreenOn(true);
 
         header=new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -124,8 +127,10 @@ public class VideoPlayerActivity extends Activity {
         Button external=control("外部で再生");
         external.setOnClickListener(v->openExternally());
         header.addView(external,new LinearLayout.LayoutParams(dp(110),dp(46)));
-        FrameLayout.LayoutParams headParams=new FrameLayout.LayoutParams(-1,dp(58),Gravity.TOP);
-        root.addView(header,headParams);
+        // Keep controls out of the SurfaceView's drawing region. This also
+        // avoids overlays that can cause black video on some Android GPUs.
+        root.addView(header,new LinearLayout.LayoutParams(-1,dp(58)));
+        root.addView(video,new LinearLayout.LayoutParams(-1,0,1));
 
         LinearLayout controls=new LinearLayout(this);
         controls.setOrientation(LinearLayout.VERTICAL);
@@ -188,9 +193,7 @@ public class VideoPlayerActivity extends Activity {
         });
         actions.addView(fullScreenButton,new LinearLayout.LayoutParams(0,dp(46),1));
         controls.addView(actions,new LinearLayout.LayoutParams(-1,dp(48)));
-        FrameLayout.LayoutParams bottomParams=new FrameLayout.LayoutParams(
-                -1,dp(124),Gravity.BOTTOM);
-        root.addView(controls,bottomParams);
+        root.addView(controls,new LinearLayout.LayoutParams(-1,dp(124)));
 
         setContentView(root);
         SafeWindowLayout.apply(this,root,true);
