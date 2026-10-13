@@ -36,6 +36,24 @@ final class PendingVideoStore {
         Files.move(completed.toPath(),target.toPath(),StandardCopyOption.REPLACE_EXISTING);
         return target;
     }
+    /**
+     * Best-effort rescue of an orphaned original HLS stream from a previous
+     * crashed/killed conversion. A recovered file may still be incomplete.
+     * Only reads this application's own extract-* cache subdirectories.
+     */
+    static File adoptOrphanedHls(Context context) throws IOException{
+        File[] dirs=context.getCacheDir().listFiles();
+        if(dirs==null)return null;
+        File largest=null;
+        for(File dir:dirs){
+            if(!dir.isDirectory()||!dir.getName().startsWith("extract-"))continue;
+            File candidate=HlsFileOutput.findOriginalTransport(dir);
+            if(candidate!=null && (largest==null || candidate.length()>largest.length()))
+                largest=candidate;
+        }
+        if(largest==null)return null;
+        return hold(context,HlsFileOutput.correctExtension(largest));
+    }
     static long freeSpaceForMedia(Context context){
         File dir=context.getExternalFilesDir(android.os.Environment.DIRECTORY_MOVIES);
         return dir!=null?dir.getUsableSpace():-1;
