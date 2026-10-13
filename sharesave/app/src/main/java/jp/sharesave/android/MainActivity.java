@@ -832,8 +832,28 @@ public class MainActivity extends Activity {
         browserSettings.addView(homeSettings,new LinearLayout.LayoutParams(-1,dp(45)));
         settingsPage.addView(section("ブラウザ設定"));
         settingsPage.addView(browserSettings,ShareSaveTheme.bottomMargin(this,12));
+        settingsPage.addView(section("動画の保存形式"));
+        LinearLayout formatCard=ShareSaveTheme.card(this);
+        android.widget.CheckBox fastHls=new android.widget.CheckBox(this);
+        fastHls.setText("高速HLS保存（MP4変換を省略）");
+        fastHls.setTextColor(ShareSaveTheme.WHITE);
+        fastHls.setTextSize(14);
+        fastHls.setButtonTintList(android.content.res.ColorStateList.valueOf(ShareSaveTheme.CYAN));
+        fastHls.setChecked(DownloadService.state(this).getBoolean("hls_fast_save",true));
+        fastHls.setOnCheckedChangeListener((button,checked)->{
+            DownloadService.state(this).edit().putBoolean("hls_fast_save",checked).apply();
+            display(checked?"次回のHLS保存から高速TSモードを使用します。":
+                "次回のHLS保存からMP4変換モードを使用します。");
+        });
+        formatCard.addView(fastHls);
+        formatCard.addView(ShareSaveTheme.text(this,
+            "推奨：ON。HLSをTS形式のまま保存し、2GB超の動画でも変換待ちを減らします。"+
+            "一部の再生アプリはTS非対応です。その場合は外部プレイヤーで開くかOFFを選択してください。"+
+            "設定変更は次のダウンロードから適用します。",
+            12,false,ShareSaveTheme.SECONDARY));
+        settingsPage.addView(formatCard,ShareSaveTheme.bottomMargin(this,12));
         settingsPage.addView(ShareSaveTheme.text(this,
-            "ShareSave 1.1.0 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
+            "ShareSave 1.2.0 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
             12,false,ShareSaveTheme.SECONDARY));
 
         // Bottom navigation; every visible button has an active destination.
