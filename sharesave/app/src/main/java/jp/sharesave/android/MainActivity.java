@@ -96,6 +96,7 @@ public class MainActivity extends Activity {
     private Button stop;
     private int blue=ShareSaveTheme.BLUE;
     private LinearLayout homePage,browserPage,downloadsPage,settingsPage;
+    private View homeContainer,browserContainer,downloadsContainer,settingsContainer;
     private TextView browserInfo,downloadPageStatus;
     private ProgressBar downloadPageProgress;
     private Button navHome,navBrowser,navDownload,navLibrary,navSettings;
@@ -103,10 +104,10 @@ public class MainActivity extends Activity {
     private void showTab(int tab){
         selectedTab=tab;
         if(homePage==null)return;
-        homePage.setVisibility(tab==0?View.VISIBLE:View.GONE);
-        browserPage.setVisibility(tab==1?View.VISIBLE:View.GONE);
-        downloadsPage.setVisibility(tab==2?View.VISIBLE:View.GONE);
-        settingsPage.setVisibility(tab==3?View.VISIBLE:View.GONE);
+        homeContainer.setVisibility(tab==0?View.VISIBLE:View.GONE);
+        browserContainer.setVisibility(tab==1?View.VISIBLE:View.GONE);
+        downloadsContainer.setVisibility(tab==2?View.VISIBLE:View.GONE);
+        settingsContainer.setVisibility(tab==3?View.VISIBLE:View.GONE);
         ShareSaveTheme.setTab(navHome,tab==0);
         ShareSaveTheme.setTab(navBrowser,tab==1);
         ShareSaveTheme.setTab(navDownload,tab==2);
@@ -569,6 +570,7 @@ public class MainActivity extends Activity {
         homePage.setOrientation(LinearLayout.VERTICAL);
         homePage.setPadding(dp(12),0,dp(12),dp(12));
         homeScroll.addView(homePage);
+        homeContainer=homeScroll;
         content.addView(homeScroll,new android.widget.FrameLayout.LayoutParams(-1,-1));
 
         homePage.addView(section("クイックアクセス"));
@@ -619,6 +621,7 @@ public class MainActivity extends Activity {
         browserPage=new LinearLayout(this);
         browserPage.setPadding(dp(12),0,dp(12),dp(6));
         browserPage.setOrientation(LinearLayout.VERTICAL);
+        browserContainer=browserPage;
         content.addView(browserPage,new android.widget.FrameLayout.LayoutParams(-1,-1));
         LinearLayout browserTools=horizontal();
         Button back=ShareSaveTheme.button(this,"← 戻る",false);
@@ -660,6 +663,7 @@ public class MainActivity extends Activity {
         downloadsPage.setOrientation(LinearLayout.VERTICAL);
         downloadsPage.setPadding(dp(12),dp(3),dp(12),dp(12));
         dlScroll.addView(downloadsPage);
+        downloadsContainer=dlScroll;
         content.addView(dlScroll,new android.widget.FrameLayout.LayoutParams(-1,-1));
         downloadsPage.addView(section("ダウンロードマネージャー"));
         LinearLayout dlCard=ShareSaveTheme.card(this);
@@ -686,6 +690,7 @@ public class MainActivity extends Activity {
         settingsPage.setOrientation(LinearLayout.VERTICAL);
         settingsPage.setPadding(dp(12),0,dp(12),dp(12));
         settingsScroll.addView(settingsPage);
+        settingsContainer=settingsScroll;
         content.addView(settingsScroll,new android.widget.FrameLayout.LayoutParams(-1,-1));
         settingsPage.addView(section("診断・ツール"));
         LinearLayout diagnostics=ShareSaveTheme.card(this);
