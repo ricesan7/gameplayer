@@ -297,7 +297,7 @@ public class MainActivity extends Activity {
         scroller.addView(list);
         TextView note=new TextView(this);
         note.setText("画像・配信形式・容量を比較して選択できます。HLS/DASHの容量は概算の場合があります。");
-        note.setTextSize(12);note.setTextColor(Color.DKGRAY);
+        note.setTextSize(12);note.setTextColor(ShareSaveTheme.SECONDARY);
         list.addView(note,lp(-1,-2));
 
         AlertDialog dialog=new AlertDialog.Builder(this)
@@ -340,7 +340,7 @@ public class MainActivity extends Activity {
             row.setPadding(dp(5),dp(12),dp(5),dp(12));
 
             ImageView thumbnail=new ImageView(this);
-            thumbnail.setBackgroundColor(Color.rgb(229,233,238));
+            thumbnail.setBackgroundColor(ShareSaveTheme.SUB_BG);
             thumbnail.setImageResource(android.R.drawable.ic_media_play);
             thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
             row.addView(thumbnail,lp(118,74));
@@ -351,30 +351,30 @@ public class MainActivity extends Activity {
             TextView name=new TextView(this);
             name.setText(friendlyTitle);
             name.setTextSize(14);
-            name.setTextColor(Color.BLACK);
+            name.setTextColor(ShareSaveTheme.WHITE);
             name.setMaxLines(2);
             detail.addView(name,lp(-1,-2));
 
             TextView kind=new TextView(this);
             kind.setText(candidateLabel(c));
             kind.setTextSize(11);
-            kind.setTextColor(Color.DKGRAY);
+            kind.setTextColor(ShareSaveTheme.SECONDARY);
             detail.addView(kind,lp(-1,-2));
 
             TextView size=new TextView(this);
             size.setText("容量を確認中...");
             size.setTextSize(12);
-            size.setTextColor(blue);
+            size.setTextColor(ShareSaveTheme.CYAN);
             detail.addView(size,lp(-1,-2));
             TextView origin=new TextView(this);
             origin.setText(imageFromVideo?"画像: 動画から取得":"画像: ページ代表（未照合）");
             origin.setTextSize(10);
-            origin.setTextColor(Color.DKGRAY);
+            origin.setTextColor(ShareSaveTheme.MUTED);
             detail.addView(origin,lp(-1,-2));
             row.addView(detail,new LinearLayout.LayoutParams(0,-2,1));
 
             row.setClickable(true);
-            row.setBackgroundResource(android.R.drawable.list_selector_background);
+            row.setBackground(ShareSaveTheme.panel(this,index==0));
             row.setOnClickListener(v->{
                 long age=android.os.SystemClock.elapsedRealtime()-c.foundAtMs;
                 if(age>90000){
@@ -396,7 +396,7 @@ public class MainActivity extends Activity {
             });
             list.addView(row,lp(-1,-2));
             View divider=new View(this);
-            divider.setBackgroundColor(Color.rgb(222,226,230));
+            divider.setBackgroundColor(ShareSaveTheme.BG);
             list.addView(divider,lp(-1,1));
 
             final String caption=imageFromVideo?"動画サムネイル":"ページ代表画像（動画との一致未確認）";
