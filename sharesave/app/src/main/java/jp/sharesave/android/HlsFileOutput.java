@@ -28,6 +28,21 @@ final class HlsFileOutput {
             return false;
         }
     }
+    /** Find the completed original TS after a failed FFmpeg FixupM3u8 stage. */
+    static File findOriginalTransport(File dir) throws IOException{
+        if(dir==null||!dir.isDirectory())return null;
+        File[] files=dir.listFiles();
+        if(files==null)return null;
+        File best=null;
+        for(File candidate:files){
+            String n=candidate.getName().toLowerCase(Locale.ROOT);
+            if(!candidate.isFile()||candidate.length()<1024*1024L)continue;
+            if(!n.endsWith(".mp4")&&!n.endsWith(".ts"))continue;
+            if(!looksLikeMpegTs(candidate))continue;
+            if(best==null||candidate.length()>best.length())best=candidate;
+        }
+        return best;
+    }
     static File correctExtension(File file) throws IOException{
         if(file==null||!file.isFile())throw new IOException("保存対象ファイルがありません");
         String name=file.getName().toLowerCase(Locale.ROOT);
