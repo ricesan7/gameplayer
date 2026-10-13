@@ -191,7 +191,7 @@ public class MainActivity extends Activity {
             .setView(edit).setNegativeButton("キャンセル",null)
             .setPositiveButton("設定",(dialog,which)->{
                 String value=edit.getText().toString().trim();
-                if(browserStore.setHomepage(value))display("ホームページを保存しました。");
+                if(allowed(value)&&browserStore.setHomepage(value))display("ホームページを保存しました。");
                 else display("HTTPSの正しいURLを入力してください。");
             }).show();
     }
