@@ -62,18 +62,17 @@ public class SavedVideosActivity extends Activity {
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12),dp(12),dp(12),dp(8));
-        root.setBackgroundColor(Color.rgb(250,250,252));
+        root.setBackgroundColor(ShareSaveTheme.BG);
 
         LinearLayout actions=new LinearLayout(this);
         actions.setGravity(Gravity.CENTER_VERTICAL);
-        Button back=new Button(this);back.setAllCaps(false);back.setText("← 戻る");
+        Button back=ShareSaveTheme.button(this,"← 戻る",false);
         back.setOnClickListener(v->finish());
         actions.addView(back,new LinearLayout.LayoutParams(0,dp(49),1));
-        TextView heading=new TextView(this);
-        heading.setText("保存済み動画");heading.setTextSize(20);
-        heading.setTextColor(Color.rgb(35,75,160));heading.setGravity(Gravity.CENTER);
+        TextView heading=ShareSaveTheme.text(this,"▣  ライブラリ",21,true,ShareSaveTheme.WHITE);
+        heading.setGravity(Gravity.CENTER);
         actions.addView(heading,new LinearLayout.LayoutParams(0,dp(49),2));
-        Button refresh=new Button(this);refresh.setAllCaps(false);refresh.setText("更新");
+        Button refresh=ShareSaveTheme.button(this,"↻ 更新",false);
         refresh.setOnClickListener(v->loadVideos());
         actions.addView(refresh,new LinearLayout.LayoutParams(0,dp(49),1));
         root.addView(actions,new LinearLayout.LayoutParams(-1,dp(58)));
@@ -81,18 +80,21 @@ public class SavedVideosActivity extends Activity {
         caption=new TextView(this);
         caption.setText("保存済み動画を読み込み中…");
         caption.setTextSize(12);caption.setGravity(Gravity.CENTER_VERTICAL);
-        caption.setTextColor(Color.DKGRAY);
+        caption.setTextColor(ShareSaveTheme.SECONDARY);
         root.addView(caption,new LinearLayout.LayoutParams(-1,dp(44)));
 
         ListView list=new ListView(this);
-        list.setDividerHeight(dp(1));
+        list.setBackgroundColor(ShareSaveTheme.BG);
+        list.setDividerHeight(dp(8));
+        list.setDivider(null);
+        list.setSelector(android.R.color.transparent);
         adapter=new VideoAdapter();
         list.setAdapter(adapter);
         list.setOnItemClickListener((parent,view,position,id)->play(items.get(position)));
         list.setEmptyView(null);
         root.addView(list,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
-        SafeWindowLayout.apply(this,root,false);
+        SafeWindowLayout.apply(this,root,true);
         loadVideos();
     }
     @Override protected void onResume(){
@@ -221,24 +223,26 @@ public class SavedVideosActivity extends Activity {
             }else{
                 row=new LinearLayout(SavedVideosActivity.this);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(dp(4),dp(8),dp(4),dp(8));
+                row.setPadding(dp(10),dp(10),dp(10),dp(10));
+                row.setBackground(ShareSaveTheme.panel(SavedVideosActivity.this,false));
                 h=new Holder();
                 h.image=new ImageView(SavedVideosActivity.this);
                 h.image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                h.image.setBackgroundColor(Color.rgb(223,229,237));
+                h.image.setBackgroundColor(ShareSaveTheme.SUB_BG);
                 row.addView(h.image,new LinearLayout.LayoutParams(dp(112),dp(72)));
                 LinearLayout texts=new LinearLayout(SavedVideosActivity.this);
                 texts.setOrientation(LinearLayout.VERTICAL);
                 texts.setPadding(dp(10),0,dp(6),0);
                 h.name=new TextView(SavedVideosActivity.this);
-                h.name.setTextColor(Color.BLACK);h.name.setTextSize(14);h.name.setMaxLines(2);
+                h.name.setTextColor(ShareSaveTheme.WHITE);h.name.setTextSize(14);
+                h.name.setTypeface(null,android.graphics.Typeface.BOLD);h.name.setMaxLines(2);
                 texts.addView(h.name);
                 h.info=new TextView(SavedVideosActivity.this);
-                h.info.setTextColor(Color.DKGRAY);h.info.setTextSize(11);h.info.setMaxLines(2);
+                h.info.setTextColor(ShareSaveTheme.SECONDARY);h.info.setTextSize(11);h.info.setMaxLines(2);
                 texts.addView(h.info);
                 row.addView(texts,new LinearLayout.LayoutParams(0,-2,1));
-                h.delete=new Button(SavedVideosActivity.this);
-                h.delete.setText("削除");h.delete.setTextSize(12);h.delete.setAllCaps(false);
+                h.delete=ShareSaveTheme.button(SavedVideosActivity.this,"削除",false);
+                h.delete.setTextColor(ShareSaveTheme.RED);h.delete.setTextSize(12);
                 h.delete.setFocusable(false);
                 row.addView(h.delete,new LinearLayout.LayoutParams(dp(66),dp(48)));
                 row.setTag(h);
