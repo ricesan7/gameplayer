@@ -490,6 +490,37 @@ public final class DownloadService extends Service {
                     }
                     return kotlin.Unit.INSTANCE;
                 });
+            }catch(Exception engineError){
+                // If a complete HLS transfer already finished, never discard 2+ GiB
+                // solely because FFmpeg's subsequent MP4 fix-up stalled/failed.
+                // The raw transport stream is playable on compatible players.
+                if(!fastHls && !stopFlag.get()){
+                    ArrayList<String> output=getLogSnapshot();
+                    boolean finished=false,fixup=false;
+                    for(String line:output){
+                        if(line.startsWith("[download]")&&line.contains("100%"))finished=true;
+                        if(line.contains("[FixupM3u8]"))fixup=true;
+                    }
+                    if(finished && fixup){
+                        monitorEngine=false;
+                        File raw=HlsFileOutput.findOriginalTransport(temp);
+                        if(raw!=null){
+                            timedOut.set(false);
+                            File saved=HlsFileOutput.correctExtension(raw);
+                            if(saved.length()>LIMIT)throw new IOException("取得済み動画がサイズ上限を超えています。");
+                            stage("MP4変換に失敗したため、取得済みTS動画を救出しています…");
+                            expectedSavingBytes=saved.length();
+                            try(InputStream in=new FileInputStream(saved)){
+                                store(in,"video/mp2t",saved.getName(),stopFlag);
+                            }finally{expectedSavingBytes=-1;}
+                            state(this).edit().putString("hls_save_mode",
+                                "MP4変換に失敗したためTS動画を救出").apply();
+                            rememberLog("ShareSave: raw MPEG-TS salvaged after FFmpeg fixup failure");
+                            return;
+                        }
+                    }
+                }
+                throw engineError;
             }finally{monitorEngine=false;processingStage="SAVING";}
             if(timedOut.get())throw new IOException("取得エンジンが応答しませんでした。");
             if(stopFlag.get())throw new IOException("中止しました。");
