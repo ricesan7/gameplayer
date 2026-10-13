@@ -25,6 +25,22 @@ public class HlsFileOutputTest {
             dir.delete();
         }
     }
+    @Test public void findsOrphanedOriginalInsteadOfPartialRemux() throws Exception{
+        File dir=Files.createTempDirectory("sharesave-recovery").toFile();
+        try{
+            byte[] ts=new byte[1024*1024+300];
+            for(int i=0;i<3;i++)ts[i*188]=(byte)0x47;
+            File original=new File(dir,"playlist.mp4");
+            Files.write(original.toPath(),ts);
+            File partial=new File(dir,"playlist.temp.mp4");
+            Files.write(partial.toPath(),new byte[512]);
+            assertEquals(original,HlsFileOutput.findOriginalTransport(dir));
+        }finally{
+            File[] entries=dir.listFiles();
+            if(entries!=null)for(File e:entries)e.delete();
+            dir.delete();
+        }
+    }
     @Test public void doesNotRenameRealMp4() throws Exception{
         File file=File.createTempFile("video",".mp4");
         try{
