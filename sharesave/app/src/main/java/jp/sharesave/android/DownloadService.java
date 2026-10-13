@@ -590,8 +590,13 @@ public final class DownloadService extends Service {
     }
     private void restorePendingVideo() throws Exception{
         File file=PendingVideoStore.newest(this);
-        if(file==null)throw new IOException("保留された動画はありません");
-        stage("保存待ちの動画を復旧しています…");
+        if(file==null){
+            stage("以前の変換処理で残った動画を探しています…");
+            file=PendingVideoStore.adoptOrphanedHls(this);
+        }
+        if(file==null)throw new IOException(
+            "保留された動画は見つかりませんでした。旧バージョンで一時ファイルが削除された可能性があります。");
+        stage("保存待ちの動画を端末へ復旧しています…");
         if(file.length()>LIMIT)throw new IOException("ファイルが4GBの上限を超えています");
         expectedSavingBytes=file.length();
         try(InputStream in=new FileInputStream(file)){
