@@ -833,7 +833,7 @@ public class MainActivity extends Activity {
         settingsPage.addView(section("ブラウザ設定"));
         settingsPage.addView(browserSettings,ShareSaveTheme.bottomMargin(this,12));
         settingsPage.addView(ShareSaveTheme.text(this,
-            "ShareSave 1.0.0 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
+            "ShareSave 1.1.0 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
             12,false,ShareSaveTheme.SECONDARY));
 
         // Bottom navigation; every visible button has an active destination.
