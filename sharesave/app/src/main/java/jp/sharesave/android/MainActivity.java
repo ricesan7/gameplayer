@@ -852,6 +852,47 @@ public class MainActivity extends Activity {
             "設定変更は次のダウンロードから適用します。",
             12,false,ShareSaveTheme.SECONDARY));
         settingsPage.addView(formatCard,ShareSaveTheme.bottomMargin(this,12));
+        settingsPage.addView(section("取得済みファイルの復旧"));
+        LinearLayout recoveryCard=ShareSaveTheme.card(this);
+        TextView pendingInfo=ShareSaveTheme.text(this,
+            "保存待ち "+PendingVideoStore.count(this)+" 件 / "+
+            StreamDetails.formatBytes(PendingVideoStore.pendingBytes(this)),
+            12,false,ShareSaveTheme.SECONDARY);
+        recoveryCard.addView(pendingInfo,ShareSaveTheme.bottomMargin(this,8));
+        Button recoverVideo=ShareSaveTheme.button(this,"↺ 保存待ち・残存動画を復旧",true);
+        recoverVideo.setOnClickListener(v->{
+            if(DownloadService.isRunning()){
+                display("動画保存中です。終了後に復旧を実行してください。");return;
+            }
+            new AlertDialog.Builder(this).setTitle("取得済み動画を復旧")
+                .setMessage("端末内の保存待ち動画や、以前の変換が停止して残っているHLSデータを探して保存します。"+
+                    "残存ファイルは途中までの可能性があります。追加の空き容量も必要です。")
+                .setNegativeButton("キャンセル",null)
+                .setPositiveButton("復旧する",(dialog,which)->{
+                    try{
+                        Intent i=new Intent(this,DownloadService.class).setAction(DownloadService.ACTION_RECOVER);
+                        startForegroundService(i);
+                        showTab(2);
+                        display("保存待ちファイルを確認しています…");
+                    }catch(Exception e){display("復旧を開始できません: "+e.getMessage());}
+                }).show();
+        });
+        recoveryCard.addView(recoverVideo,ShareSaveTheme.bottomMargin(this,8));
+        Button clearPending=ShareSaveTheme.button(this,"✕ 保留データを削除",false);
+        clearPending.setTextColor(ShareSaveTheme.RED);
+        clearPending.setOnClickListener(v->
+            new AlertDialog.Builder(this).setTitle("保留動画を完全に削除")
+                .setMessage("保留された動画ファイルを完全に削除します。保存済み動画には影響しません。")
+                .setNegativeButton("キャンセル",null)
+                .setPositiveButton("削除",(d,w)->{
+                    if(DownloadService.isRunning()){
+                        display("処理中のため、終了後に削除してください。");return;
+                    }
+                    int count=PendingVideoStore.deletePending(this);
+                    pendingInfo.setText("保留データ削除: "+count+" 件");
+                }).show());
+        recoveryCard.addView(clearPending,new LinearLayout.LayoutParams(-1,dp(43)));
+        settingsPage.addView(recoveryCard,ShareSaveTheme.bottomMargin(this,12));
         settingsPage.addView(ShareSaveTheme.text(this,
             "ShareSave 1.2.0 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
             12,false,ShareSaveTheme.SECONDARY));
