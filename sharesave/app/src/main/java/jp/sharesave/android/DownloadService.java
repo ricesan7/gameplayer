@@ -389,6 +389,10 @@ public final class DownloadService extends Service {
     }
     private void downloadPost(String link,AtomicBoolean stopFlag,String referer,String userAgent,
                               String origin,String mediaCookies,String refererCookies) throws Exception {
+        boolean fastHls=StreamPreflight.isManifest(link) &&
+            state(this).getBoolean("hls_fast_save",true);
+        state(this).edit().putString("hls_save_mode",fastHls?
+            "高速TS保存（後処理なし）":"通常MP4保存").apply();
         if(StreamPreflight.isManifest(link)){
             stage("HLS/DASH配信先のHTTP接続を確認しています…");
             try{
@@ -452,7 +456,15 @@ public final class DownloadService extends Service {
             // merging when an already muxed HLS format is available.
             // Split best-video/best-audio remains the fallback.
             req.addOption("-f","b/bv*+ba");
-            req.addOption("--merge-output-format","mp4");
+            if(fastHls){
+                // HLS native fragments are already MPEG-TS; avoid the costly
+                // FixupM3u8 remux (which needs another full-sized video copy).
+                // Some players need an external video app for .ts playback.
+                req.addOption("--hls-use-mpegts");
+                req.addOption("--fixup","never");
+            }else{
+                req.addOption("--merge-output-format","mp4");
+            }
             req.addOption("--restrict-filenames");
             req.addOption("-o",new File(temp,"%(id)s.%(ext)s").getAbsolutePath());
             processingStage="DOWNLOADING";
@@ -491,10 +503,16 @@ public final class DownloadService extends Service {
             // Do not publish .part/.ytdl, audio-only or intermediate fragments.
             File result=CompletedVideoFile.choose(files);
             if(result==null)
-                throw new IOException("結合後の動画ファイルが見つかりません。エラー詳細でFFmpegの出力を確認してください。");
+                throw new IOException("完成した動画ファイルが見つかりません。エラー詳細を確認してください。");
+            if(fastHls){
+                // yt-dlp can label transport stream bytes with a .mp4 suffix.
+                // Never publish an MPEG-TS file as video/mp4.
+                result=HlsFileOutput.correctExtension(result);
+            }
             if(result.length()>LIMIT||result.length()==0)
                 throw new IOException("保存する動画のサイズが不正です。");
             String type=CompletedVideoFile.mime(result.getName());
+            if(type==null)throw new IOException("未対応の動画形式です。");
             expectedSavingBytes=result.length();
             try(InputStream in=new FileInputStream(result)){
                 stage("端末の動画フォルダへ保存しています…");
@@ -511,7 +529,8 @@ public final class DownloadService extends Service {
     private void store(InputStream in,String type,String filename,AtomicBoolean stopFlag) throws Exception {
         boolean image=type.startsWith("image/");
         String ext=image?(type.contains("png")?".png":type.contains("webp")?".webp":".jpg"):
-            type.contains("webm")?".webm":type.contains("mp4")?".mp4":".mp4";
+            type.equals("video/mp2t")?".ts":type.equals("video/x-matroska")?".mkv":
+            type.equals("video/quicktime")?".mov":type.contains("webm")?".webm":".mp4";
         String name=filename.matches(".*\\.[a-zA-Z0-9]{2,5}$")?filename:filename+ext;
         name=name.replaceAll("[^a-zA-Z0-9._-]","_");
         ContentValues values=new ContentValues();
