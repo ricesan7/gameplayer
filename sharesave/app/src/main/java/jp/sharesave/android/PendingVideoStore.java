@@ -41,6 +41,21 @@ final class PendingVideoStore {
      * crashed/killed conversion. A recovered file may still be incomplete.
      * Only reads this application's own extract-* cache subdirectories.
      */
+    static long pendingBytes(Context context){
+        File[] files=directory(context).listFiles();
+        long size=0;
+        if(files!=null)for(File f:files)
+            if(f.isFile()&&CompletedVideoFile.mime(f.getName())!=null)size+=Math.max(0,f.length());
+        return size;
+    }
+    static int deletePending(Context context){
+        File[] files=directory(context).listFiles();
+        int deleted=0;
+        if(files!=null)for(File f:files){
+            if(f.isFile()&&CompletedVideoFile.mime(f.getName())!=null&&f.delete())deleted++;
+        }
+        return deleted;
+    }
     static File adoptOrphanedHls(Context context) throws IOException{
         File[] dirs=context.getCacheDir().listFiles();
         if(dirs==null)return null;
