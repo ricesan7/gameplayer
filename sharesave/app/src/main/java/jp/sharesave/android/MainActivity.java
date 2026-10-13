@@ -541,7 +541,7 @@ public class MainActivity extends Activity {
             13,true,ShareSaveTheme.WHITE);
         panel.addView(info,lp(-1,-2));
         TextView hint=ShareSaveTheme.text(this,
-            "動画からフレームを取得中… 最大約60秒。映像形式によっては取得できません。",
+            "動画を解析しています。3枚で最大約70秒かかる場合があります。",
             12,false,ShareSaveTheme.SECONDARY);
         panel.addView(hint,lp(-1,-2));
         ProgressBar busy=new ProgressBar(this);
@@ -1014,7 +1014,7 @@ public class MainActivity extends Activity {
         recoveryCard.addView(clearPending,new LinearLayout.LayoutParams(-1,dp(43)));
         settingsPage.addView(recoveryCard,ShareSaveTheme.bottomMargin(this,12));
         settingsPage.addView(ShareSaveTheme.text(this,
-            "ShareSave 1.3.0 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
+            "ShareSave 1.3.1 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
             12,false,ShareSaveTheme.SECONDARY));
 
         // Bottom navigation; every visible button has an active destination.
