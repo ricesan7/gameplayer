@@ -81,7 +81,7 @@ public class VideoPlayerActivity extends Activity {
         b.setAllCaps(false);
         b.setTextColor(Color.WHITE);
         b.setMinHeight(dp(44));
-        b.setBackground(shade(Color.rgb(42,50,68),8));
+        b.setBackground(ShareSaveTheme.buttonBackground(this,false));
         return b;
     }
     @Override public void onCreate(Bundle state){
@@ -100,7 +100,7 @@ public class VideoPlayerActivity extends Activity {
         // an opaque View background can conceal its decoded video layer.
         root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.BLACK);
+        root.setBackgroundColor(ShareSaveTheme.BG);
 
         video=new VideoView(this);
         video.setBackground(null);
@@ -110,7 +110,7 @@ public class VideoPlayerActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setPadding(dp(8),dp(4),dp(8),dp(4));
-        header.setBackgroundColor(Color.argb(218,19,24,34));
+        header.setBackgroundColor(ShareSaveTheme.CARD);
         Button back=control("← 一覧");
         back.setOnClickListener(v->finish());
         header.addView(back,new LinearLayout.LayoutParams(dp(94),dp(46)));
@@ -135,7 +135,7 @@ public class VideoPlayerActivity extends Activity {
         LinearLayout controls=new LinearLayout(this);
         controls.setOrientation(LinearLayout.VERTICAL);
         controls.setPadding(dp(12),dp(10),dp(12),dp(12));
-        controls.setBackgroundColor(Color.argb(226,14,19,29));
+        controls.setBackgroundColor(ShareSaveTheme.SUB_BG);
         LinearLayout timeline=new LinearLayout(this);
         timeline.setOrientation(LinearLayout.HORIZONTAL);
         timeline.setGravity(Gravity.CENTER_VERTICAL);
@@ -146,6 +146,8 @@ public class VideoPlayerActivity extends Activity {
         timeline.addView(currentTime,new LinearLayout.LayoutParams(dp(50),dp(40)));
         seek=new SeekBar(this);
         seek.setMax(1);
+        seek.setProgressTintList(android.content.res.ColorStateList.valueOf(ShareSaveTheme.CYAN));
+        seek.setThumbTintList(android.content.res.ColorStateList.valueOf(ShareSaveTheme.BLUE));
         seek.setProgress(0);
         seek.setContentDescription("動画の再生位置");
         timeline.addView(seek,new LinearLayout.LayoutParams(0,dp(48),1));
