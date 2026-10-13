@@ -512,17 +512,21 @@ public class MainActivity extends Activity {
         LinearLayout titleStack=new LinearLayout(this);
         titleStack.setOrientation(LinearLayout.VERTICAL);
         TextView title=ShareSaveTheme.text(this,"ShareSave",27,true,ShareSaveTheme.WHITE);
+        android.text.SpannableString wordmark=new android.text.SpannableString("ShareSave");
+        wordmark.setSpan(new android.text.style.ForegroundColorSpan(ShareSaveTheme.CYAN),
+            5,9,android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        title.setText(wordmark);
         titleStack.addView(title);
         titleStack.addView(ShareSaveTheme.text(this,"Smart Downloader",11,false,ShareSaveTheme.CYAN));
         brand.addView(titleStack,new LinearLayout.LayoutParams(0,dp(58),1));
         Button gotoLibrary=ShareSaveTheme.button(this,"▣ 保存済み",false);
         gotoLibrary.setOnClickListener(v->openLibrary());
         brand.addView(gotoLibrary,new LinearLayout.LayoutParams(dp(113),dp(43)));
-        root.addView(brand,lp(-1,70));
+        root.addView(brand,lp(-1,77));
 
         // Shared URL bar; both home and browser have immediate access to it.
         LinearLayout urlCard=ShareSaveTheme.card(this);
-        LinearLayout.LayoutParams urlMargin=new LinearLayout.LayoutParams(-1,dp(108));
+        LinearLayout.LayoutParams urlMargin=new LinearLayout.LayoutParams(-1,-2);
         urlMargin.setMargins(dp(12),0,dp(12),dp(7));
         address=new EditText(this);
         address.setTextSize(13);
