@@ -398,7 +398,7 @@ public final class DownloadService extends Service {
         boolean fastHls=StreamPreflight.isManifest(link) &&
             state(this).getBoolean("hls_fast_save",true);
         state(this).edit().putString("hls_save_mode",fastHls?
-            "高速TS保存（後処理なし）":"通常MP4保存").apply();
+            "互換HLS取得・MP4修復処理だけ省略":"従来のMP4取得").apply();
         if(StreamPreflight.isManifest(link)){
             stage("HLS/DASH配信先のHTTP接続を確認しています…");
             try{
@@ -462,15 +462,20 @@ public final class DownloadService extends Service {
             // merging when an already muxed HLS format is available.
             // Split best-video/best-audio remains the fallback.
             req.addOption("-f","b/bv*+ba");
+            // Keep the downloader/protocol selection from v1.1.0 that
+            // successfully transferred all 1175 HLS fragments. The
+            // --hls-use-mpegts override added in v1.2.0 changes the native
+            // HLS downloader's behavior and can stall on some providers.
+            // Skipping *only* FFmpeg FixupM3u8 avoids the prior 2.36GiB remux.
             if(fastHls){
-                // HLS native fragments are already MPEG-TS; avoid the costly
-                // FixupM3u8 remux (which needs another full-sized video copy).
-                // Some players need an external video app for .ts playback.
-                req.addOption("--hls-use-mpegts");
                 req.addOption("--fixup","never");
-            }else{
-                req.addOption("--merge-output-format","mp4");
             }
+            req.addOption("--merge-output-format","mp4");
+            rememberLog(fastHls?
+                "HLS compatibility transport + no FixupM3u8":
+                "HLS original v1.1 transport + standard FFmpeg fixup");
+            state(this).edit().putString("download_strategy",
+                fastHls?"v1.1-compatible-no-fixup":"v1.1-original-mp4").apply();
             req.addOption("--restrict-filenames");
             req.addOption("-o",new File(temp,"%(id)s.%(ext)s").getAbsolutePath());
             processingStage="DOWNLOADING";
