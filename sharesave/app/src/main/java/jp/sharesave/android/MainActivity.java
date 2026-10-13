@@ -6,6 +6,7 @@ import android.content.ClipboardManager;
 import android.content.ClipData;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Bitmap;
@@ -140,6 +141,60 @@ public class MainActivity extends Activity {
     private void openLibrary(){
         startActivity(new Intent(this,SavedVideosActivity.class));
     }
+    private String browserUrl(){
+        String url=web==null?null:web.getUrl();
+        return BrowserUrlRules.valid(url)&&allowed(url)?url:null;
+    }
+    private void refreshBookmarkButton(){
+        if(bookmarkCurrentButton==null||browserStore==null)return;
+        String url=browserUrl();
+        bookmarkCurrentButton.setText(url!=null&&browserStore.isBookmarked(url)?"★ 保存済み":"☆ 保存");
+    }
+    private void bookmarkCurrentPage(){
+        String url=browserUrl();
+        if(url==null){display("HTTPSのページを開いてから保存してください。");return;}
+        browserDialogs.saveCurrent(url,web.getTitle());
+    }
+    private void copyBrowserUrl(){
+        String url=browserUrl();
+        if(url==null){display("コピーするページURLがありません。");return;}
+        ClipboardManager manager=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+        manager.setPrimaryClip(ClipData.newPlainText("ShareSave URL",url));
+        display("ページURLをコピーしました。");
+    }
+    private void shareBrowserUrl(){
+        String url=browserUrl();
+        if(url==null){display("共有するページURLがありません。");return;}
+        Intent share=new Intent(Intent.ACTION_SEND);
+        share.setType("text/plain");
+        share.putExtra(Intent.EXTRA_TEXT,url);
+        try{startActivity(Intent.createChooser(share,"URLを共有"));}
+        catch(ActivityNotFoundException e){display("共有先アプリがありません。");}
+    }
+    private void externalBrowser(){
+        String url=browserUrl();
+        if(url==null){display("外部で開くページURLがありません。");return;}
+        try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url))
+            .addCategory(Intent.CATEGORY_BROWSABLE));}
+        catch(ActivityNotFoundException e){display("ブラウザアプリが見つかりません。");}
+    }
+    private void homepageSettings(){
+        String current=browserStore.homepage();
+        EditText edit=new EditText(this);
+        edit.setText(current);
+        edit.setTextColor(ShareSaveTheme.WHITE);
+        edit.setSelectAllOnFocus(true);
+        edit.setSingleLine(true);
+        edit.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+        edit.setPadding(dp(16),dp(4),dp(16),dp(4));
+        new AlertDialog.Builder(this).setTitle("ブラウザのホームページURL")
+            .setView(edit).setNegativeButton("キャンセル",null)
+            .setPositiveButton("設定",(dialog,which)->{
+                String value=edit.getText().toString().trim();
+                if(browserStore.setHomepage(value))display("ホームページを保存しました。");
+                else display("HTTPSの正しいURLを入力してください。");
+            }).show();
+    }
 
     private boolean initialized=false;
     // Lock the currently displayed video page to defeat unsolicited redirects.
@@ -148,6 +203,9 @@ public class MainActivity extends Activity {
     private Button pageLockButton;
     private Button streamButton;
     private Button freshButton;
+    private Button bookmarkCurrentButton;
+    private BrowserStore browserStore;
+    private BrowserLibraryDialog browserDialogs;
     private final Object streamsMutex=new Object();
     private final LinkedHashMap<String,StreamCandidate> detectedStreams=new LinkedHashMap<>();
     private static final int MAX_CANDIDATES=15;
@@ -502,6 +560,8 @@ public class MainActivity extends Activity {
     }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        browserStore=new BrowserStore(this);
+        browserDialogs=new BrowserLibraryDialog(this,browserStore,this::openUrl,this::refreshBookmarkButton);
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(ShareSaveTheme.BG);
@@ -634,10 +694,32 @@ public class MainActivity extends Activity {
         forward.setOnClickListener(v->{if(web.canGoForward())web.goForward();});
         Button refresh=ShareSaveTheme.button(this,"↻ 更新",false);
         refresh.setOnClickListener(v->reloadAndFindLatestStreams());
+        bookmarkCurrentButton=ShareSaveTheme.button(this,"☆ 保存",false);
+        bookmarkCurrentButton.setOnClickListener(v->bookmarkCurrentPage());
         addWeighted(browserTools,back,39,5);
         addWeighted(browserTools,forward,39,5);
-        addWeighted(browserTools,refresh,39,0);
+        addWeighted(browserTools,refresh,39,5);
+        addWeighted(browserTools,bookmarkCurrentButton,39,0);
         browserPage.addView(browserTools,ShareSaveTheme.bottomMargin(this,7));
+
+        LinearLayout browserShortcuts=horizontal();
+        String[] labels={"★ 一覧","履歴","⌂ ホーム","⧉ コピー","↗ 共有","外部"};
+        Runnable[] callbacks={
+            ()->browserDialogs.showBookmarks(),
+            ()->browserDialogs.showHistory(),
+            ()->openUrl(browserStore.homepage()),
+            ()->copyBrowserUrl(),
+            ()->shareBrowserUrl(),
+            ()->externalBrowser()
+        };
+        for(int i=0;i<labels.length;i++){
+            Button shortcut=ShareSaveTheme.button(this,labels[i],false);
+            shortcut.setTextSize(10);
+            Runnable action=callbacks[i];
+            shortcut.setOnClickListener(v->action.run());
+            addWeighted(browserShortcuts,shortcut,36,i==labels.length-1?0:3);
+        }
+        browserPage.addView(browserShortcuts,ShareSaveTheme.bottomMargin(this,7));
 
         browserInfo=ShareSaveTheme.text(this,"動画ページを開いて再生すると配信候補を検出します",12,false,ShareSaveTheme.SECONDARY);
         browserPage.addView(browserInfo,ShareSaveTheme.bottomMargin(this,6));
@@ -744,6 +826,12 @@ public class MainActivity extends Activity {
         });
         diagnostics.addView(updateEngine,lp(-1,44));
         settingsPage.addView(diagnostics,ShareSaveTheme.bottomMargin(this,12));
+        LinearLayout browserSettings=ShareSaveTheme.card(this);
+        Button homeSettings=ShareSaveTheme.button(this,"⌂ ホームページURLを設定",false);
+        homeSettings.setOnClickListener(v->homepageSettings());
+        browserSettings.addView(homeSettings,new LinearLayout.LayoutParams(-1,dp(45)));
+        settingsPage.addView(section("ブラウザ設定"));
+        settingsPage.addView(browserSettings,ShareSaveTheme.bottomMargin(this,12));
         settingsPage.addView(ShareSaveTheme.text(this,
             "ShareSave 1.0.0 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
             12,false,ShareSaveTheme.SECONDARY));
@@ -813,10 +901,19 @@ public class MainActivity extends Activity {
                 if(allowed(url)) {
                     address.setText(url);
                     if(pageLockEnabled&&pinnedPageUrl==null)pinnedPageUrl=url;
+                    if(BrowserUrlRules.valid(url))browserStore.recordVisit(url,w.getTitle());
+                    refreshBookmarkButton();
                 }
             }
         });
         web.setWebChromeClient(new WebChromeClient(){
+            @Override public void onReceivedTitle(WebView view,String title){
+                super.onReceivedTitle(view,title);
+                String url=view.getUrl();
+                if(BrowserUrlRules.valid(url)&&allowed(url))
+                    browserStore.recordVisit(url,title);
+                refreshBookmarkButton();
+            }
             @Override public boolean onCreateWindow(WebView view,boolean isDialog,
                                                       boolean isUserGesture,android.os.Message resultMsg){
                 display("広告などの別ウィンドウをブロックしました。");
@@ -828,7 +925,7 @@ public class MainActivity extends Activity {
                 saveLink(url);
         });
         // Attach the functioning existing WebView inside its dedicated browser tab.
-        browserPage.addView(web,2,new LinearLayout.LayoutParams(-1,0,1));
+        browserPage.addView(web,3,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
         SafeWindowLayout.apply(this,root,true);
         showTab(0);
@@ -893,6 +990,7 @@ public class MainActivity extends Activity {
         pinnedPageUrl=null;
         resetDetectedStreams();
         address.setText(url);web.loadUrl(url);
+        refreshBookmarkButton();
         showTab(1);
         display("動画を再生すると候補が検出されます。");
     }
