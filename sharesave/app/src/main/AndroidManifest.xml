@@ -4,7 +4,7 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-  <application android:theme="@android:style/Theme.Material.Light.NoActionBar"
+  <application android:theme="@android:style/Theme.Material.NoActionBar"
     android:label="ShareSave" android:usesCleartextTraffic="false"
     android:allowBackup="false" android:extractNativeLibs="true">
     <service android:name=".DownloadService"
