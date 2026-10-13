@@ -103,6 +103,7 @@ public class MainActivity extends Activity {
     private TextView browserInfo,downloadPageStatus;
     private ProgressBar downloadPageProgress;
     private Button navHome,navBrowser,navDownload,navLibrary,navSettings;
+    private ShareSaveNavigationIcons navigationIcons;
     private int selectedTab=0;
     private void showTab(int tab){
         selectedTab=tab;
@@ -111,10 +112,13 @@ public class MainActivity extends Activity {
         browserContainer.setVisibility(tab==1?View.VISIBLE:View.GONE);
         downloadsContainer.setVisibility(tab==2?View.VISIBLE:View.GONE);
         settingsContainer.setVisibility(tab==3?View.VISIBLE:View.GONE);
-        ShareSaveTheme.setTab(navHome,tab==0);
-        ShareSaveTheme.setTab(navBrowser,tab==1);
-        ShareSaveTheme.setTab(navDownload,tab==2);
-        ShareSaveTheme.setTab(navSettings,tab==3);
+        if(navigationIcons!=null){
+            navigationIcons.apply(navHome,0,tab==0);
+            navigationIcons.apply(navBrowser,1,tab==1);
+            navigationIcons.apply(navDownload,2,tab==2);
+            navigationIcons.apply(navLibrary,3,false);
+            navigationIcons.apply(navSettings,4,tab==3);
+        }
     }
     private Button feature(String icon,String title,String details,Runnable action){
         Button b=ShareSaveTheme.button(this,icon+"  "+title+"\n"+details,false);
@@ -674,6 +678,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         browserStore=new BrowserStore(this);
+        navigationIcons=new ShareSaveNavigationIcons(this);
         browserDialogs=new BrowserLibraryDialog(this,browserStore,this::openUrl,this::refreshBookmarkButton);
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -1014,28 +1019,28 @@ public class MainActivity extends Activity {
         recoveryCard.addView(clearPending,new LinearLayout.LayoutParams(-1,dp(43)));
         settingsPage.addView(recoveryCard,ShareSaveTheme.bottomMargin(this,12));
         settingsPage.addView(ShareSaveTheme.text(this,
-            "ShareSave 1.3.1 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
+            "ShareSave 1.3.2 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
             12,false,ShareSaveTheme.SECONDARY));
 
         // Bottom navigation; every visible button has an active destination.
         LinearLayout navigation=horizontal();
-        navigation.setPadding(dp(6),dp(4),dp(6),dp(3));
+        navigation.setPadding(dp(3),dp(3),dp(3),dp(3));
         navigation.setBackground(ShareSaveTheme.input(this));
-        navHome=ShareSaveTheme.button(this,"⌂\nホーム",false);
-        navBrowser=ShareSaveTheme.button(this,"◎\nブラウザ",false);
-        navDownload=ShareSaveTheme.button(this,"↓\nDL管理",false);
-        navLibrary=ShareSaveTheme.button(this,"▣\n動画一覧",false);
-        navSettings=ShareSaveTheme.button(this,"⚙\n設定",false);
+        navHome=ShareSaveTheme.button(this,"ホーム",false);
+        navBrowser=ShareSaveTheme.button(this,"ブラウザ",false);
+        navDownload=ShareSaveTheme.button(this,"DL管理",false);
+        navLibrary=ShareSaveTheme.button(this,"動画一覧",false);
+        navSettings=ShareSaveTheme.button(this,"設定",false);
         for(Button nav:new Button[]{navHome,navBrowser,navDownload,navLibrary,navSettings}){
             nav.setTextSize(10);
-            addWeighted(navigation,nav,55,0);
+            addWeighted(navigation,nav,66,0);
         }
         navHome.setOnClickListener(v->showTab(0));
         navBrowser.setOnClickListener(v->showTab(1));
         navDownload.setOnClickListener(v->showTab(2));
         navLibrary.setOnClickListener(v->openLibrary());
         navSettings.setOnClickListener(v->showTab(3));
-        root.addView(navigation,lp(-1,62));
+        root.addView(navigation,lp(-1,74));
         web=new WebView(this);
         WebSettings s=web.getSettings();
         s.setJavaScriptEnabled(true);
