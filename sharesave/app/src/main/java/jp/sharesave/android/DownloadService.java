@@ -575,14 +575,15 @@ public final class DownloadService extends Service {
         }catch(Exception e){
             // Preserve the successfully downloaded data for a future save attempt.
             if(video.exists()){
+                boolean held=false;
                 try{
                     PendingVideoStore.hold(this,video);
-                    throw new IOException("保存処理に失敗しましたが、取得済み動画を保留しました。"+
-                        "設定の「保留動画を復旧」から再試行できます。",e);
+                    held=true;
                 }catch(IOException holdError){
-                    if(holdError.getCause()!=null)throw holdError;
                     e.addSuppressed(holdError);
                 }
+                if(held)throw new IOException(
+                    "端末保存に失敗しましたが動画を保留しました。設定の「保留動画を復旧」から再試行できます。",e);
             }
             throw e;
         }finally{expectedSavingBytes=-1;}
