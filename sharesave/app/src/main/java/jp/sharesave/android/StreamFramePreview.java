@@ -102,7 +102,7 @@ final class StreamFramePreview {
             builder.environment().put("LD_LIBRARY_PATH",libraries);
             builder.redirectErrorStream(true);
             // Never retain URL or network auth in a persistent log file.
-            builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            builder.redirectOutput(new File("/dev/null"));
             process=builder.start();
             boolean exited=process.waitFor(TIMEOUT_SECONDS,TimeUnit.SECONDS);
             if(!exited||cancelled.get()){
