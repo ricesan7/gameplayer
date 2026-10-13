@@ -574,7 +574,7 @@ public final class DownloadService extends Service {
             store(in,type,video.getName(),stopFlag);
         }catch(Exception e){
             // Preserve the successfully downloaded data for a future save attempt.
-            if(video.exists()){
+            if(!stopFlag.get()&&video.exists()){
                 boolean held=false;
                 try{
                     PendingVideoStore.hold(this,video);
