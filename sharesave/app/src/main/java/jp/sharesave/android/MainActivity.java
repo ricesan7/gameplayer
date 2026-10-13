@@ -69,6 +69,12 @@ public class MainActivity extends Activity {
             if(active || (!message.isEmpty()&&!message.equals(lastTransferMessageShown))){
                 lastTransferMessageShown=message;
                 if(status!=null)status.setText(message);
+                if(downloadPageStatus!=null)downloadPageStatus.setText(message);
+                if(downloadPageProgress!=null){
+                    downloadPageProgress.setVisibility(active?View.VISIBLE:View.GONE);
+                    downloadPageProgress.setIndeterminate(percent<0);
+                    if(percent>=0)downloadPageProgress.setProgress(percent);
+                }
                 if(progress!=null){
                     progress.setVisibility(active?View.VISIBLE:View.GONE);
                     progress.setIndeterminate(percent<0);
@@ -88,7 +94,52 @@ public class MainActivity extends Activity {
     private ProgressBar progress;
     private WebView web;
     private Button stop;
-    private int blue=Color.rgb(45,92,217);
+    private int blue=ShareSaveTheme.BLUE;
+    private LinearLayout homePage,browserPage,downloadsPage,settingsPage;
+    private TextView browserInfo,downloadPageStatus;
+    private ProgressBar downloadPageProgress;
+    private Button navHome,navBrowser,navDownload,navLibrary,navSettings;
+    private int selectedTab=0;
+    private void showTab(int tab){
+        selectedTab=tab;
+        if(homePage==null)return;
+        homePage.setVisibility(tab==0?View.VISIBLE:View.GONE);
+        browserPage.setVisibility(tab==1?View.VISIBLE:View.GONE);
+        downloadsPage.setVisibility(tab==2?View.VISIBLE:View.GONE);
+        settingsPage.setVisibility(tab==3?View.VISIBLE:View.GONE);
+        ShareSaveTheme.setTab(navHome,tab==0);
+        ShareSaveTheme.setTab(navBrowser,tab==1);
+        ShareSaveTheme.setTab(navDownload,tab==2);
+        ShareSaveTheme.setTab(navSettings,tab==3);
+    }
+    private Button feature(String icon,String title,String details,Runnable action){
+        Button b=ShareSaveTheme.button(this,icon+"  "+title+"\n"+details,false);
+        b.setGravity(Gravity.CENTER_VERTICAL|Gravity.START);
+        b.setTextSize(12);
+        b.setMinHeight(dp(76));
+        b.setOnClickListener(v->action.run());
+        return b;
+    }
+    private LinearLayout horizontal(){
+        LinearLayout row=new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        return row;
+    }
+    private void addWeighted(LinearLayout parent,View v,int height,int rightMargin){
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(height),1);
+        p.rightMargin=dp(rightMargin);
+        parent.addView(v,p);
+    }
+    private TextView section(String title){
+        TextView tv=ShareSaveTheme.text(this,title,17,true,ShareSaveTheme.WHITE);
+        tv.setPadding(0,dp(10),0,dp(9));
+        return tv;
+    }
+    private void openLibrary(){
+        startActivity(new Intent(this,SavedVideosActivity.class));
+    }
+
     private boolean initialized=false;
     // Lock the currently displayed video page to defeat unsolicited redirects.
     private boolean pageLockEnabled=true;
@@ -137,7 +188,9 @@ public class MainActivity extends Activity {
         int n;
         synchronized(streamsMutex){n=detectedStreams.size();}
         runOnUiThread(()->{
-            if(streamButton!=null)streamButton.setText("📺 再生中の配信を保存 ("+n+")");
+            if(streamButton!=null)streamButton.setText("◎ 配信候補を表示 ("+n+")");
+            if(browserInfo!=null)browserInfo.setText(n>0?
+                "接続中の動画配信を "+n+" 件検出しました":"動画を再生すると配信候補を検出します");
         });
     }
     private void observeMediaRequest(String url){observeMediaRequest(url,null,null);}
@@ -450,74 +503,193 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(12),dp(18),dp(12),dp(10));
-        root.setBackgroundColor(Color.rgb(249,249,251));
-        TextView title=new TextView(this);
-        title.setText("ShareSave  動画・画像を保存");
-        title.setTextSize(22);
-        title.setTextColor(blue);
-        title.setGravity(Gravity.CENTER);
-        root.addView(title,lp(-1,58));
+        root.setBackgroundColor(ShareSaveTheme.BG);
+
+        // Header is independent from the status bar and does not use fake PRO badges.
+        LinearLayout brand=horizontal();
+        brand.setPadding(dp(16),dp(7),dp(14),dp(8));
+        LinearLayout titleStack=new LinearLayout(this);
+        titleStack.setOrientation(LinearLayout.VERTICAL);
+        TextView title=ShareSaveTheme.text(this,"ShareSave",27,true,ShareSaveTheme.WHITE);
+        titleStack.addView(title);
+        titleStack.addView(ShareSaveTheme.text(this,"Smart Downloader",11,false,ShareSaveTheme.CYAN));
+        brand.addView(titleStack,new LinearLayout.LayoutParams(0,dp(58),1));
+        Button gotoLibrary=ShareSaveTheme.button(this,"▣ 保存済み",false);
+        gotoLibrary.setOnClickListener(v->openLibrary());
+        brand.addView(gotoLibrary,new LinearLayout.LayoutParams(dp(113),dp(43)));
+        root.addView(brand,lp(-1,70));
+
+        // Shared URL bar; both home and browser have immediate access to it.
+        LinearLayout urlCard=ShareSaveTheme.card(this);
+        LinearLayout.LayoutParams urlMargin=new LinearLayout.LayoutParams(-1,dp(108));
+        urlMargin.setMargins(dp(12),0,dp(12),dp(7));
         address=new EditText(this);
         address.setTextSize(13);
         address.setSingleLine(true);
         address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
-        address.setHint("SNSの動画URL / https://...mp4");
-        root.addView(address,lp(-1,52));
-        LinearLayout toolbar=new LinearLayout(this);
-        toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        Button open=button("ページを開く");
-        Button save=button("動画を保存");
+        address.setHint("動画URLを貼り付け");
+        address.setHintTextColor(ShareSaveTheme.MUTED);
+        address.setTextColor(ShareSaveTheme.WHITE);
+        address.setBackground(ShareSaveTheme.input(this));
+        address.setPadding(dp(12),0,dp(12),0);
+        urlCard.addView(address,lp(-1,43));
+        LinearLayout actions=horizontal();
+        actions.setPadding(0,dp(9),0,0);
+        Button paste=ShareSaveTheme.button(this,"貼り付け",false);
+        paste.setOnClickListener(v->{
+            ClipboardManager clip=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+            if(clip!=null&&clip.hasPrimaryClip()&&clip.getPrimaryClip().getItemCount()>0)
+                address.setText(clip.getPrimaryClip().getItemAt(0).coerceToText(this));
+        });
+        Button open=ShareSaveTheme.button(this,"開く",false);
         open.setOnClickListener(v->openUrl(address.getText().toString()));
+        Button analyze=ShareSaveTheme.button(this,"配信解析",false);
+        analyze.setOnClickListener(v->{showTab(1);selectStreamToSave();});
+        Button save=ShareSaveTheme.button(this,"↓ 保存",true);
         save.setOnClickListener(v->{
             boolean found;
             synchronized(streamsMutex){found=!detectedStreams.isEmpty();}
             if(found)selectStreamToSave();
             else saveLink(currentUrl());
         });
-        toolbar.addView(open,new LinearLayout.LayoutParams(0,dp(52),1));
-        toolbar.addView(save,new LinearLayout.LayoutParams(0,dp(52),1));
-        root.addView(toolbar,lp(-1,56));
-        Button library=button("📁 保存済み動画を見る・再生・削除");
-        library.setOnClickListener(v->startActivity(
-            new Intent(this,SavedVideosActivity.class)));
-        root.addView(library,lp(-1,49));
-        pageLockButton=button("🔒 ページ固定: ON");
-        pageLockButton.setOnClickListener(v->{
-            pageLockEnabled=!pageLockEnabled;
-            pinnedPageUrl=pageLockEnabled&&web!=null&&allowed(web.getUrl())?web.getUrl():null;
-            pageLockButton.setText(pageLockEnabled?"🔒 ページ固定: ON":"🔓 ページ固定: OFF");
-            display(pageLockEnabled?"ページ移動をブロックします。":"ページ固定を解除しました。");
-        });
-        root.addView(pageLockButton,lp(-1,46));
-        streamButton=button("📺 再生中の配信を保存 (0)");
-        streamButton.setOnClickListener(v->selectStreamToSave());
-        root.addView(streamButton,lp(-1,48));
-        freshButton=button("🔄 配信候補を更新・再検出");
-        freshButton.setOnClickListener(v->reloadAndFindLatestStreams());
-        root.addView(freshButton,lp(-1,46));
-        status=new TextView(this);
-        status.setText("SNSの共有メニューからも起動できます。");
-        status.setTextColor(Color.DKGRAY);
-        status.setTextSize(12);
-        status.setGravity(Gravity.CENTER);
+        addWeighted(actions,paste,40,5);
+        addWeighted(actions,open,40,5);
+        addWeighted(actions,analyze,40,5);
+        addWeighted(actions,save,40,0);
+        urlCard.addView(actions,lp(-1,48));
+        root.addView(urlCard,urlMargin);
+
+        android.widget.FrameLayout content=new android.widget.FrameLayout(this);
+        root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
+
+        // HOME - scrolling cards are real controls, not a baked-in screenshot.
+        android.widget.ScrollView homeScroll=new android.widget.ScrollView(this);
+        homeScroll.setFillViewport(true);
+        homePage=new LinearLayout(this);
+        homePage.setOrientation(LinearLayout.VERTICAL);
+        homePage.setPadding(dp(12),0,dp(12),dp(12));
+        homeScroll.addView(homePage);
+        content.addView(homeScroll,new android.widget.FrameLayout.LayoutParams(-1,-1));
+
+        homePage.addView(section("クイックアクセス"));
+        LinearLayout features1=horizontal();
+        addWeighted(features1,feature("↗","共有受信","共有リンクを取得",()->display("他アプリの共有メニューからShareSaveを選択してください。")),77,6);
+        addWeighted(features1,feature("◎","配信検出","再生動画を検出",()->{showTab(1);selectStreamToSave();}),77,6);
+        addWeighted(features1,feature("≡","DL一覧","状況を確認",()->showTab(2)),77,0);
+        homePage.addView(features1,ShareSaveTheme.bottomMargin(this,7));
+        LinearLayout features2=horizontal();
+        addWeighted(features2,feature("▣","保存済み","動画を再生・削除",()->openLibrary()),77,6);
+        addWeighted(features2,feature("⌁","診断","エラーログ",()->showTab(3)),77,6);
+        addWeighted(features2,feature("⚙","設定","各種ツール",()->showTab(3)),77,0);
+        homePage.addView(features2,ShareSaveTheme.bottomMargin(this,12));
+
+        homePage.addView(section("↓ 進行中のダウンロード"));
+        LinearLayout downloadCard=ShareSaveTheme.card(this);
+        status=ShareSaveTheme.text(this,"現在実行中のダウンロードはありません",13,true,ShareSaveTheme.SECONDARY);
         status.setMaxLines(3);
         status.setTextIsSelectable(true);
-        root.addView(status,lp(-1,58));
+        downloadCard.addView(status,ShareSaveTheme.bottomMargin(this,8));
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100);
-        progress.setVisibility(View.GONE);
-        root.addView(progress,lp(-1,7));
-        stop=button("ダウンロードを中止");
+        progress.setMax(100);progress.setVisibility(View.GONE);
+        ShareSaveTheme.tintProgress(progress);
+        downloadCard.addView(progress,lp(-1,8));
+        stop=ShareSaveTheme.button(this,"✕ ダウンロードを中止",false);
         stop.setVisibility(View.GONE);
         stop.setOnClickListener(v->{
             DownloadService.cancelFromActivity(this);
             display("ダウンロードの中止を要求しました。");
         });
-        root.addView(stop,lp(-1,43));
-        LinearLayout diagnostics=new LinearLayout(this);
-        diagnostics.setOrientation(LinearLayout.HORIZONTAL);
-        Button showError=button("エラー詳細・コピー");
+        LinearLayout.LayoutParams stopParams=ShareSaveTheme.bottomMargin(this,0);
+        stopParams.topMargin=dp(10);
+        stopParams.height=dp(40);
+        downloadCard.addView(stop,stopParams);
+        homePage.addView(downloadCard,ShareSaveTheme.bottomMargin(this,12));
+
+        homePage.addView(section("▣ 最近の保存"));
+        LinearLayout recent=ShareSaveTheme.card(this);
+        recent.addView(ShareSaveTheme.text(this,
+            "保存済み動画の一覧から再生・共有・削除ができます。",12,false,ShareSaveTheme.SECONDARY),
+            ShareSaveTheme.bottomMargin(this,10));
+        Button recentButton=ShareSaveTheme.button(this,"保存済み動画を表示  →",true);
+        recentButton.setOnClickListener(v->openLibrary());
+        recent.addView(recentButton,lp(-1,43));
+        homePage.addView(recent,ShareSaveTheme.bottomMargin(this,10));
+
+        // BROWSER - preserves original WebView; navigation and detection live here.
+        browserPage=new LinearLayout(this);
+        browserPage.setPadding(dp(12),0,dp(12),dp(6));
+        browserPage.setOrientation(LinearLayout.VERTICAL);
+        content.addView(browserPage,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        LinearLayout browserTools=horizontal();
+        Button back=ShareSaveTheme.button(this,"← 戻る",false);
+        back.setOnClickListener(v->{if(web.canGoBack()){pinnedPageUrl=null;web.goBack();}});
+        Button forward=ShareSaveTheme.button(this,"→ 進む",false);
+        forward.setOnClickListener(v->{if(web.canGoForward())web.goForward();});
+        Button refresh=ShareSaveTheme.button(this,"↻ 更新",false);
+        refresh.setOnClickListener(v->reloadAndFindLatestStreams());
+        addWeighted(browserTools,back,39,5);
+        addWeighted(browserTools,forward,39,5);
+        addWeighted(browserTools,refresh,39,0);
+        browserPage.addView(browserTools,ShareSaveTheme.bottomMargin(this,7));
+
+        browserInfo=ShareSaveTheme.text(this,"動画ページを開いて再生すると配信候補を検出します",12,false,ShareSaveTheme.SECONDARY);
+        browserPage.addView(browserInfo,ShareSaveTheme.bottomMargin(this,6));
+        // WebView is attached further below, after media interception setup.
+
+        LinearLayout browserControls=horizontal();
+        pageLockButton=ShareSaveTheme.button(this,"🔒 ページ固定 ON",false);
+        pageLockButton.setOnClickListener(v->{
+            pageLockEnabled=!pageLockEnabled;
+            pinnedPageUrl=pageLockEnabled&&web!=null&&allowed(web.getUrl())?web.getUrl():null;
+            pageLockButton.setText(pageLockEnabled?"🔒 ページ固定 ON":"🔓 ページ固定 OFF");
+        });
+        browserControls.addView(pageLockButton,new LinearLayout.LayoutParams(0,dp(39),1));
+        freshButton=ShareSaveTheme.button(this,"↻ 再検出",false);
+        freshButton.setOnClickListener(v->reloadAndFindLatestStreams());
+        LinearLayout.LayoutParams freshParams=new LinearLayout.LayoutParams(0,dp(39),1);
+        freshParams.leftMargin=dp(6);
+        browserControls.addView(freshButton,freshParams);
+        browserPage.addView(browserControls,ShareSaveTheme.bottomMargin(this,6));
+        streamButton=ShareSaveTheme.button(this,"◎ 配信候補を表示 (0)",true);
+        streamButton.setOnClickListener(v->selectStreamToSave());
+        browserPage.addView(streamButton,lp(-1,44));
+
+        // DOWNLOADS page: synchronized with the running foreground service.
+        android.widget.ScrollView dlScroll=new android.widget.ScrollView(this);
+        downloadsPage=new LinearLayout(this);
+        downloadsPage.setOrientation(LinearLayout.VERTICAL);
+        downloadsPage.setPadding(dp(12),dp(3),dp(12),dp(12));
+        dlScroll.addView(downloadsPage);
+        content.addView(dlScroll,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        downloadsPage.addView(section("ダウンロードマネージャー"));
+        LinearLayout dlCard=ShareSaveTheme.card(this);
+        downloadPageStatus=ShareSaveTheme.text(this,"実行中の処理はありません",15,true,ShareSaveTheme.WHITE);
+        dlCard.addView(downloadPageStatus,ShareSaveTheme.bottomMargin(this,13));
+        downloadPageProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+        downloadPageProgress.setVisibility(View.GONE);
+        downloadPageProgress.setMax(100);
+        ShareSaveTheme.tintProgress(downloadPageProgress);
+        dlCard.addView(downloadPageProgress,lp(-1,8));
+        Button cancelDl=ShareSaveTheme.button(this,"✕ 中止",false);
+        cancelDl.setOnClickListener(v->DownloadService.cancelFromActivity(this));
+        LinearLayout.LayoutParams cancelParams=ShareSaveTheme.bottomMargin(this,0);
+        cancelParams.topMargin=dp(12);cancelParams.height=dp(42);
+        dlCard.addView(cancelDl,cancelParams);
+        downloadsPage.addView(dlCard,ShareSaveTheme.bottomMargin(this,12));
+        Button completed=ShareSaveTheme.button(this,"✓ 完了した動画を表示",true);
+        completed.setOnClickListener(v->openLibrary());
+        downloadsPage.addView(completed,lp(-1,46));
+
+        // SETTINGS - diagnostics and manual engine updates.
+        android.widget.ScrollView settingsScroll=new android.widget.ScrollView(this);
+        settingsPage=new LinearLayout(this);
+        settingsPage.setOrientation(LinearLayout.VERTICAL);
+        settingsPage.setPadding(dp(12),0,dp(12),dp(12));
+        settingsScroll.addView(settingsPage);
+        content.addView(settingsScroll,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        settingsPage.addView(section("診断・ツール"));
+        LinearLayout diagnostics=ShareSaveTheme.card(this);
+        Button showError=ShareSaveTheme.button(this,"⌁ ダウンロード診断・コピー",false);
         showError.setOnClickListener(v->{
             SharedPreferences p=DownloadService.state(this);
             String summary=p.getString("error_summary","");
@@ -533,34 +705,27 @@ public class MainActivity extends Activity {
             long seconds=started>0?Math.max(0,(System.currentTimeMillis()-started)/1000):0;
             if(details.isEmpty())details="処理中または詳細ログがまだありません。";
             final String copyText="ShareSaveの診断情報\n"+
-                "経過時間: "+seconds+" 秒\n"+
-                "段階: "+phase+"\n"+
-                "配信先HTTP確認: "+preflight+"\n"+
-                "yt-dlp本体: "+core+"\n"+
+                "経過時間: "+seconds+" 秒\n"+"段階: "+phase+"\n"+
+                "配信先HTTP確認: "+preflight+"\n"+"yt-dlp本体: "+core+"\n"+
                 "最終出力: "+lastLine+"\n"+
                 (warning.isEmpty()?"":"警告: "+warning+"\n")+
                 "エラー概要: "+summary+"\n"+
                 (cause.isEmpty()?"":"判定: "+cause+"\n")+
                 (recovery.isEmpty()?"":"推奨対応: "+recovery+"\n")+
                 "詳細:\n"+details;
-            TextView content=new TextView(this);
-            content.setText(copyText);
-            content.setTextSize(12);
-            content.setTextIsSelectable(true);
-            int pad=dp(16);content.setPadding(pad,pad,pad,pad);
-            ScrollView scroller=new ScrollView(this);
-            scroller.addView(content);
-            new AlertDialog.Builder(this)
-                .setTitle("ダウンロードのエラー詳細")
-                .setView(scroller)
-                .setPositiveButton("コピー",(d,which)->{
+            TextView report=ShareSaveTheme.text(this,copyText,12,false,ShareSaveTheme.WHITE);
+            report.setTextIsSelectable(true);
+            report.setPadding(dp(14),dp(12),dp(14),dp(12));
+            ScrollView scroll=new ScrollView(this);scroll.addView(report);
+            new AlertDialog.Builder(this).setTitle("ダウンロード診断")
+                .setView(scroll).setPositiveButton("コピー",(d,which)->{
                     ClipboardManager clip=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
                     clip.setPrimaryClip(ClipData.newPlainText("ShareSave diagnostics",copyText));
-                    display("エラー詳細をコピーしました。");
+                    display("診断情報をコピーしました。");
                 }).setNegativeButton("閉じる",null).show();
         });
-        diagnostics.addView(showError,new LinearLayout.LayoutParams(0,dp(46),1));
-        Button updateEngine=button("yt-dlp更新");
+        diagnostics.addView(showError,ShareSaveTheme.bottomMargin(this,9));
+        Button updateEngine=ShareSaveTheme.button(this,"↻ yt-dlp本体の更新",false);
         updateEngine.setOnClickListener(v->{
             try{
                 startForegroundService(new Intent(this,DownloadService.class)
@@ -568,8 +733,31 @@ public class MainActivity extends Activity {
                 display("動画取得エンジンの更新を確認しています…");
             }catch(Exception e){display("更新開始に失敗: "+e.getMessage());}
         });
-        diagnostics.addView(updateEngine,new LinearLayout.LayoutParams(0,dp(46),1));
-        root.addView(diagnostics,lp(-1,50));
+        diagnostics.addView(updateEngine,lp(-1,44));
+        settingsPage.addView(diagnostics,ShareSaveTheme.bottomMargin(this,12));
+        settingsPage.addView(ShareSaveTheme.text(this,
+            "ShareSave 1.0.0 — 保存先 Movies/ShareSave\n動画の保存と通信の安全性を優先します。",
+            12,false,ShareSaveTheme.SECONDARY));
+
+        // Bottom navigation; every visible button has an active destination.
+        LinearLayout navigation=horizontal();
+        navigation.setPadding(dp(6),dp(4),dp(6),dp(3));
+        navigation.setBackground(ShareSaveTheme.input(this));
+        navHome=ShareSaveTheme.button(this,"⌂\nホーム",false);
+        navBrowser=ShareSaveTheme.button(this,"◎\nブラウザ",false);
+        navDownload=ShareSaveTheme.button(this,"↓\nDL管理",false);
+        navLibrary=ShareSaveTheme.button(this,"▣\n動画一覧",false);
+        navSettings=ShareSaveTheme.button(this,"⚙\n設定",false);
+        for(Button nav:new Button[]{navHome,navBrowser,navDownload,navLibrary,navSettings}){
+            nav.setTextSize(10);
+            addWeighted(navigation,nav,55,0);
+        }
+        navHome.setOnClickListener(v->showTab(0));
+        navBrowser.setOnClickListener(v->showTab(1));
+        navDownload.setOnClickListener(v->showTab(2));
+        navLibrary.setOnClickListener(v->openLibrary());
+        navSettings.setOnClickListener(v->showTab(3));
+        root.addView(navigation,lp(-1,62));
         web=new WebView(this);
         WebSettings s=web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -630,9 +818,11 @@ public class MainActivity extends Activity {
             if(allowed(url)&&(directMedia(url)||mime!=null&&(mime.startsWith("video/")||mime.startsWith("image/"))))
                 saveLink(url);
         });
-        root.addView(web,new LinearLayout.LayoutParams(-1,0,1));
+        // Attach the functioning existing WebView inside its dedicated browser tab.
+        browserPage.addView(web,2,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
-        SafeWindowLayout.apply(this,root,false);
+        SafeWindowLayout.apply(this,root,true);
+        showTab(0);
         // Android 13+: optional permission, so progress appears in the notification shade.
         if(Build.VERSION.SDK_INT>=33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=
@@ -647,7 +837,8 @@ public class MainActivity extends Activity {
         receive(intent);
     }
     @Override public void onBackPressed() {
-        if(web.canGoBack()){pinnedPageUrl=null;web.goBack();}
+        if(selectedTab==1&&web.canGoBack()){pinnedPageUrl=null;web.goBack();}
+        else if(selectedTab!=0)showTab(0);
         else super.onBackPressed();
     }
     @Override protected void onResume(){
@@ -693,7 +884,8 @@ public class MainActivity extends Activity {
         pinnedPageUrl=null;
         resetDetectedStreams();
         address.setText(url);web.loadUrl(url);
-        display("ページ表示と動画ファイルの保存は別の処理です。");
+        showTab(1);
+        display("動画を再生すると候補が検出されます。");
     }
     private static boolean allowed(String s) {
         try {
