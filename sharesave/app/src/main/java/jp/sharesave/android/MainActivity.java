@@ -790,6 +790,9 @@ public class MainActivity extends Activity {
             String phase=p.getString("debug_stage","未記録");
             String preflight=p.getString("preflight_result","未確認");
             String core=p.getString("engine_core_version","未確認");
+            String mode=p.getString("hls_save_mode","未記録");
+            long space=PendingVideoStore.freeSpaceForMedia(this);
+            String freeSpace=space>=0?StreamDetails.formatBytes(space):"取得不可";
             String lastLine=p.getString("debug_last_line","まだ出力がありません");
             String warning=p.getString("debug_warning","");
             long started=p.getLong("debug_started_at",0);
@@ -798,6 +801,8 @@ public class MainActivity extends Activity {
             final String copyText="ShareSaveの診断情報\n"+
                 "経過時間: "+seconds+" 秒\n"+"段階: "+phase+"\n"+
                 "配信先HTTP確認: "+preflight+"\n"+"yt-dlp本体: "+core+"\n"+
+                "保存方式: "+mode+"\n"+
+                "端末の空き容量: "+freeSpace+"\n"+
                 "最終出力: "+lastLine+"\n"+
                 (warning.isEmpty()?"":"警告: "+warning+"\n")+
                 "エラー概要: "+summary+"\n"+
