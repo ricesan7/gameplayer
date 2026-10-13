@@ -30,6 +30,7 @@ public final class DownloadService extends Service {
     public static final String ACTION_SHARE="jp.sharesave.android.SHARE_MEDIA";
     public static final String ACTION_CANCEL="jp.sharesave.android.CANCEL";
     public static final String ACTION_UPDATE="jp.sharesave.android.UPDATE_ENGINE";
+    public static final String ACTION_RECOVER="jp.sharesave.android.RECOVER_PENDING";
     public static final String EXTRA_URL="url",EXTRA_REFERER="referer",EXTRA_UA="agent",
             EXTRA_ORIGIN="origin",EXTRA_MEDIA_COOKIE="mediaCookie",EXTRA_REFERER_COOKIE="refererCookie";
     public static final String EXTRA_URIS="uris";
@@ -175,7 +176,8 @@ public final class DownloadService extends Service {
             publish("ダウンロードを中止しています…",-1,true);
             return START_NOT_STICKY;
         }
-        if(!ACTION_DOWNLOAD.equals(action)&&!ACTION_SHARE.equals(action)&&!ACTION_UPDATE.equals(action)){
+        if(!ACTION_DOWNLOAD.equals(action)&&!ACTION_SHARE.equals(action)&&
+            !ACTION_UPDATE.equals(action)&&!ACTION_RECOVER.equals(action)){
             stopSelf();return START_NOT_STICKY;
         }
         if(!busy.compareAndSet(false,true)){
@@ -257,6 +259,8 @@ public final class DownloadService extends Service {
                     initialized=true;
                 }
                 maybeUpdateEngine(true);
+            }else if(ACTION_RECOVER.equals(request.getAction())){
+                restorePendingVideo();
             }else if(ACTION_SHARE.equals(request.getAction()))saveStreams(request);
             else{
                 String url=request.getStringExtra(EXTRA_URL);
@@ -271,7 +275,9 @@ public final class DownloadService extends Service {
             if(timedOut.get())throw new IOException("動画取得処理が4分間応答しなかったため中断しました。別の配信候補を試してください。");
             if(cancel.get())throw new InterruptedIOException("ユーザーが中止しました");
             finish(ACTION_UPDATE.equals(request.getAction())?
-                "yt-dlpの更新確認が完了しました":"ダウンロードが完了しました",false);
+                "yt-dlpの更新確認が完了しました":
+                ACTION_RECOVER.equals(request.getAction())?
+                "保留していた動画の保存が完了しました":"ダウンロードが完了しました",false);
         }catch(Exception e){
             if(timedOut.get())e=new IOException(
                 "動画取得エンジンの出力やファイル増加が120秒間止まったため中断しました。",e);
@@ -509,10 +515,7 @@ public final class DownloadService extends Service {
                             File saved=HlsFileOutput.correctExtension(raw);
                             if(saved.length()>LIMIT)throw new IOException("取得済み動画がサイズ上限を超えています。");
                             stage("MP4変換に失敗したため、取得済みTS動画を救出しています…");
-                            expectedSavingBytes=saved.length();
-                            try(InputStream in=new FileInputStream(saved)){
-                                store(in,"video/mp2t",saved.getName(),stopFlag);
-                            }finally{expectedSavingBytes=-1;}
+                            publishCompletedVideo(saved,stopFlag);
                             state(this).edit().putString("hls_save_mode",
                                 "MP4変換に失敗したためTS動画を救出").apply();
                             rememberLog("ShareSave: raw MPEG-TS salvaged after FFmpeg fixup failure");
@@ -544,11 +547,7 @@ public final class DownloadService extends Service {
                 throw new IOException("保存する動画のサイズが不正です。");
             String type=CompletedVideoFile.mime(result.getName());
             if(type==null)throw new IOException("未対応の動画形式です。");
-            expectedSavingBytes=result.length();
-            try(InputStream in=new FileInputStream(result)){
-                stage("端末の動画フォルダへ保存しています…");
-                store(in,type,result.getName(),stopFlag);
-            }finally{expectedSavingBytes=-1;}
+            publishCompletedVideo(result,stopFlag);
         }finally {
             processId=null;
             monitoredOutputDir=null;
@@ -556,6 +555,48 @@ public final class DownloadService extends Service {
             if(files!=null)for(File f:files)f.delete();
             temp.delete();
         }
+    }
+    private void publishCompletedVideo(File video,AtomicBoolean stopFlag) throws Exception{
+        if(video==null||!video.isFile()||video.length()==0)throw new IOException("動画ファイルがありません");
+        String type=CompletedVideoFile.mime(video.getName());
+        if(type==null)throw new IOException("動画の保存形式を判定できません");
+        long space=PendingVideoStore.freeSpaceForMedia(this);
+        long needed=video.length()+128L*1024L*1024L;
+        if(space>0 && space<needed){
+            File pending=PendingVideoStore.hold(this,video);
+            throw new IOException("端末への保存容量が不足しています。"+
+                "取得済み動画を保留しました。少なくとも"+
+                (needed/(1024*1024))+"MB程度の空きを確保し、設定から復旧してください。");
+        }
+        expectedSavingBytes=video.length();
+        try(InputStream in=new FileInputStream(video)){
+            stage("動画ファイルを端末へ保存しています…");
+            store(in,type,video.getName(),stopFlag);
+        }catch(Exception e){
+            // Preserve the successfully downloaded data for a future save attempt.
+            if(video.exists()){
+                try{
+                    PendingVideoStore.hold(this,video);
+                    throw new IOException("保存処理に失敗しましたが、取得済み動画を保留しました。"+
+                        "設定の「保留動画を復旧」から再試行できます。",e);
+                }catch(IOException holdError){
+                    if(holdError.getCause()!=null)throw holdError;
+                    e.addSuppressed(holdError);
+                }
+            }
+            throw e;
+        }finally{expectedSavingBytes=-1;}
+    }
+    private void restorePendingVideo() throws Exception{
+        File file=PendingVideoStore.newest(this);
+        if(file==null)throw new IOException("保留された動画はありません");
+        stage("保存待ちの動画を復旧しています…");
+        if(file.length()>LIMIT)throw new IOException("ファイルが4GBの上限を超えています");
+        expectedSavingBytes=file.length();
+        try(InputStream in=new FileInputStream(file)){
+            store(in,CompletedVideoFile.mime(file.getName()),file.getName(),cancel);
+        }finally{expectedSavingBytes=-1;}
+        if(!file.delete())rememberLog("Pending video cleanup failed: "+file.getName());
     }
     private void store(InputStream in,String type,String filename,AtomicBoolean stopFlag) throws Exception {
         boolean image=type.startsWith("image/");
