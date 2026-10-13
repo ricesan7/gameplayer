@@ -562,24 +562,19 @@ public class MainActivity extends Activity {
         dialog.setOnDismissListener(d->cancelled.set(true));
         dialog.show();
         framePreviewPool.submit(()->{
-            List<StreamFramePreview.Frame> frames=
-                StreamFramePreview.extract(getApplicationContext(),c.url,
-                    referer,userAgent,duration,cancelled);
-            runOnUiThread(()->{
-                if(cancelled.get()||isFinishing()||isDestroyed())return;
-                panel.removeView(busy);
-                if(frames.isEmpty()){
-                    hint.setText("この配信では途中フレームを取得できませんでした。"+
-                        "認証が必要な配信や一部のHLS形式は、代表画像と候補情報で確認してください。");
-                    return;
-                }
-                hint.setText("この候補から取得した映像です（"+frames.size()+"コマ）。");
-                updated.set(true);
-                StreamFramePreview.Frame representative=frames.get(frames.size()/2);
-                candidateThumb.setImageBitmap(representative.bitmap);
-                candidateThumb.setContentDescription("途中フレーム "+
-                    StreamCandidateDescription.timeLabel(representative.timeMs));
-                for(StreamFramePreview.Frame frame:frames){
+            StreamFramePreview.Result result=StreamFramePreview.extract(
+                getApplicationContext(),c.url,referer,userAgent,duration,cancelled,
+                (step,frame)->runOnUiThread(()->{
+                    if(cancelled.get()||isFinishing()||isDestroyed())return;
+                    hint.setText(step);
+                    if(frame==null)return;
+                    if(busy.getParent()==panel)panel.removeView(busy);
+                    // Show the first successful frame without waiting for the rest.
+                    if(updated.compareAndSet(false,true)){
+                        candidateThumb.setImageBitmap(frame.bitmap);
+                        candidateThumb.setContentDescription("動画から抽出したフレーム "+
+                            StreamCandidateDescription.timeLabel(frame.timeMs));
+                    }
                     LinearLayout line=new LinearLayout(this);
                     line.setOrientation(LinearLayout.VERTICAL);
                     line.setPadding(0,dp(7),0,dp(7));
@@ -589,10 +584,20 @@ public class MainActivity extends Activity {
                     preview.setBackgroundColor(ShareSaveTheme.SUB_BG);
                     line.addView(preview,lp(-1,dp(135)));
                     TextView time=ShareSaveTheme.text(this,
-                        "再生位置 "+StreamCandidateDescription.timeLabel(frame.timeMs),
+                        "動画の再生位置 "+StreamCandidateDescription.timeLabel(frame.timeMs),
                         12,false,ShareSaveTheme.CYAN);
                     line.addView(time,lp(-1,-2));
                     strip.addView(line,lp(-1,-2));
+                }));
+            runOnUiThread(()->{
+                if(cancelled.get()||isFinishing()||isDestroyed())return;
+                if(busy.getParent()==panel)panel.removeView(busy);
+                if(result.frames.isEmpty()){
+                    hint.setText("フレーム取得失敗："+result.status+
+                        "\n候補番号・配信元・画質情報から選択できます。"+
+                        "通信・認証条件によりプレビューできない配信があります。");
+                }else{
+                    hint.setText(result.status+"（"+result.method+"）");
                 }
             });
         });
