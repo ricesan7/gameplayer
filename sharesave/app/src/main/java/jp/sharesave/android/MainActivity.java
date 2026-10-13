@@ -551,9 +551,12 @@ public class MainActivity extends Activity {
         strip.setOrientation(LinearLayout.VERTICAL);
         panel.addView(strip,lp(-1,-2));
         final AtomicBoolean cancelled=new AtomicBoolean(false);
+        ScrollView previewScroll=new ScrollView(this);
+        previewScroll.setFillViewport(false);
+        previewScroll.addView(panel);
         AlertDialog dialog=new AlertDialog.Builder(this)
             .setTitle("動画フレームプレビュー")
-            .setView(panel)
+            .setView(previewScroll)
             .setNegativeButton("閉じる",null)
             .create();
         dialog.setOnDismissListener(d->cancelled.set(true));
