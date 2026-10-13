@@ -87,6 +87,8 @@ public class MainActivity extends Activity {
         }
     };
     private final ExecutorService previewPool=Executors.newFixedThreadPool(3);
+    // Serialize opted-in frame previews; never launch 15 FFmpeg processes at once.
+    private final ExecutorService framePreviewPool=Executors.newSingleThreadExecutor();
     private final LinkedHashMap<String,Bitmap> previewCache=new LinkedHashMap<>();
     private AtomicBoolean cancel=new AtomicBoolean(false);
     private volatile String processId;
@@ -289,7 +291,7 @@ public class MainActivity extends Activity {
         "var v=vids[i],srcs=[],poster=v.poster||'',title=v.getAttribute('title')||v.getAttribute('aria-label')||'';"+
         "if(v.currentSrc)srcs.push(v.currentSrc);if(v.src)srcs.push(v.src);"+
         "var parts=v.querySelectorAll('source');for(var j=0;j<parts.length;j++){if(parts[j].src)srcs.push(parts[j].src);}"+
-        "out.push({urls:srcs,poster:poster,title:title,duration:(isFinite(v.duration)&&v.duration>0?v.duration:0)});"+
+        "out.push({urls:srcs,poster:poster,title:title,duration:(isFinite(v.duration)&&v.duration>0?v.duration:0),width:(v.videoWidth||0),height:(v.videoHeight||0)});"+
         "}"+
         "var meta=document.querySelector('meta[property=\\\"og:image\\\"],meta[name=\\\"twitter:image\\\"]');"+
         "var pic=meta?meta.content:'';try{if(pic)pic=new URL(pic,document.baseURI).href;}catch(e){pic='';}"+
@@ -354,7 +356,7 @@ public class MainActivity extends Activity {
         list.setPadding(dp(12),dp(8),dp(12),dp(10));
         scroller.addView(list);
         TextView note=new TextView(this);
-        note.setText("画像・配信形式・容量を比較して選択できます。HLS/DASHの容量は概算の場合があります。");
+        note.setText("候補番号・配信元・画質ヒントを比較できます。途中3コマは各候補を押したときだけ生成します（通信が発生します）。");
         note.setTextSize(12);note.setTextColor(ShareSaveTheme.SECONDARY);
         list.addView(note,lp(-1,-2));
 
@@ -370,6 +372,7 @@ public class MainActivity extends Activity {
             String poster=fallbackPoster;
             String title=pageTitle;
             double duration=0;
+            int videoWidth=0,videoHeight=0;
             boolean imageFromVideo=false;
             for(JSONObject video:videos){
                 JSONArray arr=video.optJSONArray("urls");
@@ -385,39 +388,59 @@ public class MainActivity extends Activity {
                         imageFromVideo=true;
                     }
                     duration=video.optDouble("duration",0);
+                    videoWidth=video.optInt("width",0);
+                    videoHeight=video.optInt("height",0);
                     break;
                 }
             }
             final String imageUrl=allowed(poster)?poster:null;
             final String safePage=allowed(page)?page:null;
             final double seconds=duration;
-            final String friendlyTitle=title.isEmpty()?"動画候補 "+(index+1):title;
+            final int number=index+1;
+            final String friendlyTitle=title.isEmpty()?"動画候補 "+number:title;
+            final AtomicBoolean frameObtained=new AtomicBoolean(false);
+            final String quality=StreamCandidateDescription.quality(c.url,videoWidth,videoHeight);
             LinearLayout row=new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(5),dp(12),dp(5),dp(12));
+            row.setPadding(dp(8),dp(9),dp(8),dp(9));
 
+            android.widget.FrameLayout art=new android.widget.FrameLayout(this);
             ImageView thumbnail=new ImageView(this);
             thumbnail.setBackgroundColor(ShareSaveTheme.SUB_BG);
             thumbnail.setImageResource(android.R.drawable.ic_media_play);
             thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            row.addView(thumbnail,lp(118,74));
+            art.addView(thumbnail,new android.widget.FrameLayout.LayoutParams(-1,-1));
+            TextView numberLabel=ShareSaveTheme.text(this,String.format(Locale.US,
+                "%02d",number),13,true,ShareSaveTheme.WHITE);
+            numberLabel.setPadding(dp(8),dp(4),dp(8),dp(4));
+            numberLabel.setBackground(ShareSaveTheme.buttonBackground(this,false));
+            android.widget.FrameLayout.LayoutParams numberParams=
+                new android.widget.FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.START);
+            art.addView(numberLabel,numberParams);
+            row.addView(art,lp(118,96));
 
             LinearLayout detail=new LinearLayout(this);
             detail.setPadding(dp(12),0,0,0);
             detail.setOrientation(LinearLayout.VERTICAL);
             TextView name=new TextView(this);
-            name.setText(friendlyTitle);
+            name.setText(String.format(Locale.JAPAN,"候補 %02d  %s",number,friendlyTitle));
             name.setTextSize(14);
             name.setTextColor(ShareSaveTheme.WHITE);
             name.setMaxLines(2);
             detail.addView(name,lp(-1,-2));
 
             TextView kind=new TextView(this);
-            kind.setText(candidateLabel(c));
+            kind.setText(c.kind+"  •  "+quality);
             kind.setTextSize(11);
             kind.setTextColor(ShareSaveTheme.SECONDARY);
             detail.addView(kind,lp(-1,-2));
+            TextView host=ShareSaveTheme.text(this,
+                StreamCandidateDescription.source(c.url)+"  #"+
+                StreamCandidateDescription.fingerprint(c.url),
+                10,false,ShareSaveTheme.SECONDARY);
+            host.setMaxLines(2);
+            detail.addView(host,lp(-1,-2));
 
             TextView size=new TextView(this);
             size.setText("容量を確認中...");
@@ -425,10 +448,22 @@ public class MainActivity extends Activity {
             size.setTextColor(ShareSaveTheme.CYAN);
             detail.addView(size,lp(-1,-2));
             TextView origin=new TextView(this);
-            origin.setText(imageFromVideo?"画像: 動画から取得":"画像: ページ代表（未照合）");
+            origin.setText(imageFromVideo?"動画ポスター（候補と同一とは限りません）":
+                "ページ代表画像（候補と未照合）");
             origin.setTextSize(10);
             origin.setTextColor(ShareSaveTheme.MUTED);
             detail.addView(origin,lp(-1,-2));
+            Button frameButton=ShareSaveTheme.button(this,"▤ 途中の3コマを見る",false);
+            frameButton.setTextSize(11);
+            LinearLayout.LayoutParams frameParams=new LinearLayout.LayoutParams(-1,dp(36));
+            frameParams.topMargin=dp(6);
+            detail.addView(frameButton,frameParams);
+            final double candidateDuration=seconds;
+            View.OnClickListener previewAction=v->
+                showStreamFramePreview(c,candidateDuration,userAgent,
+                    c.referer!=null?c.referer:safePage,number,quality,thumbnail,frameObtained);
+            frameButton.setOnClickListener(previewAction);
+            thumbnail.setOnClickListener(previewAction);
             row.addView(detail,new LinearLayout.LayoutParams(0,-2,1));
 
             row.setClickable(true);
@@ -463,7 +498,7 @@ public class MainActivity extends Activity {
                 Bitmap bitmap=loadCachedThumbnail(imageUrl,safePage,userAgent);
                 runOnUiThread(()->{
                     if(!dialog.isShowing()||isFinishing()||isDestroyed())return;
-                    if(bitmap!=null){
+                    if(bitmap!=null&&!frameObtained.get()){
                         thumbnail.setImageBitmap(bitmap);
                         thumbnail.setContentDescription(caption);
                     }else{
@@ -488,6 +523,76 @@ public class MainActivity extends Activity {
         dialog.show();
         // Launch asynchronous inspection only after the dialog can receive updates.
         for(Runnable job:jobs)previewPool.submit(job);
+    }
+    private void showStreamFramePreview(StreamCandidate c,double duration,String userAgent,
+                                        String referer,int number,String quality,
+                                        ImageView candidateThumb,AtomicBoolean updated){
+        if(!StreamDetails.safe(c.url)){
+            new AlertDialog.Builder(this).setMessage("プレビューに対応していないURLです")
+                .setPositiveButton("OK",null).show();
+            return;
+        }
+        LinearLayout panel=new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12),dp(12),dp(12),dp(14));
+        panel.setBackgroundColor(ShareSaveTheme.BG);
+        TextView info=ShareSaveTheme.text(this,
+            String.format(Locale.JAPAN,"候補 %02d • %s",number,quality),
+            13,true,ShareSaveTheme.WHITE);
+        panel.addView(info,lp(-1,-2));
+        TextView hint=ShareSaveTheme.text(this,
+            "動画からフレームを取得中… 最大約60秒。映像形式によっては取得できません。",
+            12,false,ShareSaveTheme.SECONDARY);
+        panel.addView(hint,lp(-1,-2));
+        ProgressBar busy=new ProgressBar(this);
+        ShareSaveTheme.tintProgress(busy);
+        panel.addView(busy,lp(-1,dp(45)));
+        LinearLayout strip=new LinearLayout(this);
+        strip.setOrientation(LinearLayout.VERTICAL);
+        panel.addView(strip,lp(-1,-2));
+        final AtomicBoolean cancelled=new AtomicBoolean(false);
+        AlertDialog dialog=new AlertDialog.Builder(this)
+            .setTitle("動画フレームプレビュー")
+            .setView(panel)
+            .setNegativeButton("閉じる",null)
+            .create();
+        dialog.setOnDismissListener(d->cancelled.set(true));
+        dialog.show();
+        framePreviewPool.submit(()->{
+            List<StreamFramePreview.Frame> frames=
+                StreamFramePreview.extract(getApplicationContext(),c.url,
+                    referer,userAgent,duration,cancelled);
+            runOnUiThread(()->{
+                if(cancelled.get()||isFinishing()||isDestroyed())return;
+                panel.removeView(busy);
+                if(frames.isEmpty()){
+                    hint.setText("この配信では途中フレームを取得できませんでした。"+
+                        "認証が必要な配信や一部のHLS形式は、代表画像と候補情報で確認してください。");
+                    return;
+                }
+                hint.setText("この候補から取得した映像です（"+frames.size()+"コマ）。");
+                updated.set(true);
+                StreamFramePreview.Frame representative=frames.get(frames.size()/2);
+                candidateThumb.setImageBitmap(representative.bitmap);
+                candidateThumb.setContentDescription("途中フレーム "+
+                    StreamCandidateDescription.timeLabel(representative.timeMs));
+                for(StreamFramePreview.Frame frame:frames){
+                    LinearLayout line=new LinearLayout(this);
+                    line.setOrientation(LinearLayout.VERTICAL);
+                    line.setPadding(0,dp(7),0,dp(7));
+                    ImageView preview=new ImageView(this);
+                    preview.setImageBitmap(frame.bitmap);
+                    preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    preview.setBackgroundColor(ShareSaveTheme.SUB_BG);
+                    line.addView(preview,lp(-1,dp(135)));
+                    TextView time=ShareSaveTheme.text(this,
+                        "再生位置 "+StreamCandidateDescription.timeLabel(frame.timeMs),
+                        12,false,ShareSaveTheme.CYAN);
+                    line.addView(time,lp(-1,-2));
+                    strip.addView(line,lp(-1,-2));
+                }
+            });
+        });
     }
     private Bitmap loadCachedThumbnail(String raw,String referer,String agent){
         if(!StreamDetails.safe(raw))return null;
@@ -1028,6 +1133,7 @@ public class MainActivity extends Activity {
         // DownloadService remains alive when this screen is closed.
         downloadUiHandler.removeCallbacks(updateDownloadUi);
         previewPool.shutdownNow();
+        framePreviewPool.shutdownNow();
         web.stopLoading();
         web.destroy();
         super.onDestroy();
